@@ -1,0 +1,7 @@
+{
+  "backendPort": 8080,
+  "database": "data/db/facescan.sqlite3",
+  "imageRoot": "data/images",
+  "cameraMode": "mock"
+}
+

@@ -1,0 +1,10 @@
+build/
+compile_commands.json
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+data/db/*.sqlite3
+data/db/*.sqlite3-*
+data/images/*
+logs/*
+.DS_Store

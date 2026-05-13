@@ -1,0 +1,537 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  min-width: 1000px;
+  height: 100%;
+  min-height: 700px;
+  margin: 0;
+}
+
+body {
+  color: #23282f;
+  font-family: Arial, "Microsoft YaHei", sans-serif;
+  background: #e9e9e9;
+}
+
+button {
+  font: inherit;
+}
+
+.logo-mark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 132px;
+  height: 46px;
+  padding-left: 22px;
+}
+
+.logo-ribbons {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.logo-ribbons span {
+  display: block;
+  width: 12px;
+  height: 22px;
+  background: #008a7d;
+  transform: skewX(-18deg);
+}
+
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+}
+
+.logo-text strong {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.logo-text small {
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: #8492a3;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  color: #006f70;
+}
+
+.window-icons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 12px;
+}
+
+.strong-btn.el-button {
+  min-width: 78px;
+  height: 36px;
+  color: #2d3137;
+  font-size: 22px;
+  font-weight: 800;
+  background: #fff;
+  border: 1px solid #9fa4aa;
+  border-radius: 5px;
+}
+
+.workflow-page {
+  width: 100%;
+  height: 100%;
+  min-height: 700px;
+  background: #efefef;
+  border: 1px solid #6f747a;
+}
+
+.step-header {
+  display: grid;
+  grid-template-columns: 160px 1fr 200px;
+  align-items: start;
+  height: 58px;
+  background: #f7f7f7;
+  border-bottom: 4px solid #dedede;
+}
+
+.step-nav {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  height: 58px;
+}
+
+.step-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.step-dot {
+  position: absolute;
+  top: 38px;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  border: 1px solid #838a91;
+  border-radius: 50%;
+  background: #d8d8d8;
+  transform: translateX(-50%);
+}
+
+.step-dot.active {
+  background: #007c7e;
+  border-color: #007c7e;
+}
+
+.form-panel {
+  width: 614px;
+  min-height: 494px;
+  margin: 80px auto 0;
+  padding: 32px 32px 28px;
+  background: #fff;
+  border-radius: 9px;
+}
+
+.basic-form,
+.send-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 100px;
+  row-gap: 22px;
+}
+
+.basic-form .wide,
+.send-form .wide {
+  grid-column: 1 / -1;
+}
+
+.el-form-item {
+  margin-bottom: 0;
+}
+
+.el-form-item__label {
+  color: #30343a;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.el-input,
+.el-select,
+.el-input-number {
+  width: 100%;
+}
+
+.el-input__wrapper,
+.el-select__wrapper {
+  min-height: 31px;
+  background: #f0f0f0;
+  border-radius: 5px;
+  box-shadow: none;
+}
+
+.basic-form .el-input-number .el-input__wrapper {
+  padding-left: 0;
+}
+
+.panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+  margin-top: 62px;
+}
+
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: #ededed;
+}
+
+.login-box {
+  display: grid;
+  gap: 16px;
+  width: 360px;
+  padding: 30px 34px 36px;
+  background: #fff;
+  border-radius: 8px;
+}
+
+.login-box .logo-mark {
+  width: auto;
+  padding-left: 0;
+}
+
+.login-box h1 {
+  margin: 4px 0 10px;
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+.browse-page {
+  width: 100%;
+  height: 100%;
+  min-height: 700px;
+  background: #efefef;
+  border: 1px solid #6f747a;
+}
+
+.browse-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  background: #fff;
+}
+
+.browse-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  padding: 12px 22px 8px;
+}
+
+.keyword-input {
+  width: 202px;
+}
+
+.date-input {
+  width: 146px;
+}
+
+.new-patient {
+  margin-left: auto;
+}
+
+.browse-content {
+  display: grid;
+  grid-template-columns: 294px 1fr;
+  gap: 12px;
+  height: calc(100% - 112px);
+  padding: 14px 14px 10px 22px;
+}
+
+.patient-list,
+.scan-workspace {
+  min-height: 0;
+  overflow: auto;
+  background: #fff;
+  border-radius: 4px;
+}
+
+.patient-list {
+  padding: 0;
+}
+
+.patient-row {
+  display: grid;
+  grid-template-columns: 74px 1fr 40px;
+  align-items: center;
+  width: 100%;
+  height: 80px;
+  padding: 10px;
+  text-align: left;
+  background: #fff;
+  border: 0;
+  border-bottom: 1px solid #ececec;
+  cursor: pointer;
+}
+
+.patient-row.active {
+  border: 2px solid #008f8f;
+}
+
+.thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  color: #1f242a;
+  font-size: 13px;
+  background: #f0f0f0;
+  border-radius: 5px;
+}
+
+.patient-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+}
+
+.patient-summary strong {
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.row-add {
+  color: #8b99a8;
+}
+
+.scan-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding: 12px;
+}
+
+.scan-card {
+  width: 330px;
+  border: 1px solid #9fa4aa;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.scan-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 12px 0 32px;
+  border-bottom: 3px solid #e0e0e0;
+}
+
+.scan-actions {
+  display: flex;
+  gap: 12px;
+  color: #8492a3;
+}
+
+.scan-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(100% - 10px);
+  height: 202px;
+  margin: 5px;
+  background: #ededed;
+  border: 0;
+  cursor: pointer;
+}
+
+.shoot-layout {
+  position: relative;
+  height: calc(100% - 58px);
+  min-height: 640px;
+  padding-top: 88px;
+}
+
+.camera-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 238px);
+  grid-template-rows: 150px 150px;
+  justify-content: center;
+  gap: 12px;
+}
+
+.camera-panel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #d6d6d6;
+  border-radius: 5px;
+}
+
+.camera-panel img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.camera-panel span {
+  position: absolute;
+  color: #28323a;
+  font-size: 14px;
+}
+
+.camera-panel.bottom {
+  grid-column: 2;
+}
+
+.control-panel {
+  position: absolute;
+  right: 34px;
+  bottom: 78px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 118px;
+  height: 276px;
+  text-align: center;
+  background: #fff;
+  border-radius: 6px;
+}
+
+.shoot-actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 68px;
+  display: flex;
+  justify-content: center;
+  gap: 82px;
+}
+
+.round-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  color: #7f8d9e;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.round-action.filled {
+  color: #fff;
+  background: #8e9cac;
+}
+
+.send-divider {
+  height: 3px;
+  margin: 46px -32px 40px;
+  background: #d9d9d9;
+}
+
+.send-summary {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.scan-count {
+  margin-left: auto;
+  color: #66717e;
+}
+
+.done-btn {
+  margin-left: auto;
+}
+
+.settings-page {
+  width: 100%;
+  height: 100%;
+  min-height: 700px;
+  background: #fff;
+  border: 1px solid #6f747a;
+}
+
+.settings-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 47px;
+  background: #d8d8d8;
+}
+
+.settings-header h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.settings-header .icon-btn {
+  position: absolute;
+  right: 14px;
+}
+
+.settings-body {
+  display: grid;
+  grid-template-columns: 173px 1fr;
+  height: calc(100% - 47px);
+}
+
+.settings-nav {
+  background: #efefef;
+}
+
+.settings-nav button {
+  display: block;
+  width: 173px;
+  height: 59px;
+  color: #20242a;
+  background: #efefef;
+  border: 0;
+  border-bottom: 1px solid #d4d4d4;
+  cursor: pointer;
+}
+
+.settings-content {
+  background: #fff;
+}
+
