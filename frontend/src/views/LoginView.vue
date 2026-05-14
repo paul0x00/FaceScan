@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { LogIn, ShieldCheck } from 'lucide-vue-next'
 import { login } from '../api/client'
 import LogoMark from '../components/LogoMark.vue'
 
@@ -27,11 +28,16 @@ async function submit() {
   <main class="login-page">
     <section class="login-box">
       <LogoMark />
-      <h1>面扫系统</h1>
+      <div class="login-copy">
+        <span class="eyebrow"><ShieldCheck :size="15" />本地工作站</span>
+        <h1>面扫系统</h1>
+        <p>患者建档、四路采集与扫描数据归档</p>
+      </div>
       <el-input v-model="username" size="large" placeholder="用户名" />
       <el-input v-model="password" size="large" placeholder="密码" show-password @keyup.enter="submit" />
-      <el-button type="primary" size="large" :loading="loading" @click="submit">登录</el-button>
+      <el-button class="primary-btn login-submit" size="large" :loading="loading" @click="submit">
+        <LogIn :size="18" />登录工作台
+      </el-button>
     </section>
   </main>
 </template>
-

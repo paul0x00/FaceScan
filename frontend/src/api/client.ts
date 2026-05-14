@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Patient, PatientForm, ScanResult } from '../types'
+import type { Order, Patient, PatientForm, ScanResult } from '../types'
 
 const api = axios.create({
   baseURL: '/api',
@@ -26,8 +26,8 @@ export async function fetchPatients(params: { keyword?: string; date?: string })
 }
 
 export async function createPatient(form: PatientForm) {
-  const { data } = await api.post<{ id: number }>('/patients', form)
-  return data.id
+  const { data } = await api.post<{ id: number; orderId: number; patientNo: string; orderNo: string }>('/patients', form)
+  return data
 }
 
 export async function updatePatient(id: number, form: PatientForm) {
@@ -35,9 +35,29 @@ export async function updatePatient(id: number, form: PatientForm) {
   return data.ok
 }
 
+export async function deletePatient(id: number) {
+  const { data } = await api.delete<{ ok: boolean }>(`/patients/${id}`)
+  return data.ok
+}
+
 export async function createOrder(patientId: number) {
-  const { data } = await api.post<{ id: number }>('/orders', { patientId })
-  return data.id
+  const { data } = await api.post<{ id: number; orderNo: string }>('/orders', { patientId })
+  return data
+}
+
+export async function fetchOrders(patientId: number) {
+  const { data } = await api.get<{ items: Order[] }>(`/patients/${patientId}/orders`)
+  return data.items
+}
+
+export async function deleteOrder(id: number) {
+  const { data } = await api.delete<{ ok: boolean }>(`/orders/${id}`)
+  return data.ok
+}
+
+export async function openOrderFolder(id: number) {
+  const { data } = await api.post<{ ok: boolean; path: string }>(`/orders/${id}/open-folder`)
+  return data
 }
 
 export async function startCamera() {
@@ -67,4 +87,3 @@ export async function uploadData(patientId: number) {
   const { data } = await api.post<{ ok: boolean; message: string }>('/export/upload', { patientId })
   return data
 }
-

@@ -1,6 +1,7 @@
 export interface Patient {
   id: number
   patientNo: string
+  orderNo: string
   name: string
   gender: string
   age: number
@@ -17,8 +18,18 @@ export interface ScanResult {
   createdAt: string
 }
 
+export interface Order {
+  id: number
+  patientId: number
+  orderNo: string
+  status: string
+  createdAt: string
+  scanCount: number
+}
+
 export interface PatientForm {
   patientNo: string
+  orderNo: string
   name: string
   gender: string
   age: number | null
@@ -26,4 +37,3 @@ export interface PatientForm {
   doctor: string
   remark: string
 }
-

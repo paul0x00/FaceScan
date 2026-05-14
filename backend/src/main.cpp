@@ -8,6 +8,8 @@
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
+#include <cctype>
+#include <cstdio>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -38,6 +40,7 @@ namespace {
 struct Patient {
     int id;
     std::string patientNo;
+    std::string orderNo;
     std::string name;
     std::string gender;
     int age;
@@ -52,6 +55,15 @@ struct ScanResult {
     int orderId;
     std::string previewPath;
     std::string createdAt;
+};
+
+struct Order {
+    int id;
+    int patientId;
+    std::string orderNo;
+    std::string status;
+    std::string createdAt;
+    int scanCount;
 };
 
 std::string nowText()
@@ -79,6 +91,22 @@ std::string stampText()
 #endif
     std::ostringstream os;
     os << std::put_time(&tmValue, "%Y%m%d_%H%M%S");
+    return os.str();
+}
+
+std::string stampTextMs()
+{
+    const std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+    const std::time_t t = std::chrono::system_clock::to_time_t(now);
+    const long ms = static_cast<long>(std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000);
+    std::tm tmValue;
+#if defined(_WIN32)
+    localtime_s(&tmValue, &t);
+#else
+    localtime_r(&t, &tmValue);
+#endif
+    std::ostringstream os;
+    os << std::put_time(&tmValue, "%Y%m%d%H%M%S") << std::setw(3) << std::setfill('0') << ms;
     return os.str();
 }
 
@@ -252,14 +280,122 @@ void ensureDirectory(const std::string& path)
     }
 }
 
+std::string parentDirectory(const std::string& path)
+{
+    const std::size_t pos = path.find_last_of("/\\");
+    if (pos == std::string::npos) {
+        return "";
+    }
+    return path.substr(0, pos);
+}
+
+std::string shellQuote(const std::string& path)
+{
+#if defined(_WIN32)
+    std::string out = "\"";
+    for (std::string::const_iterator it = path.begin(); it != path.end(); ++it) {
+        if (*it == '"') {
+            out += "\\\"";
+        } else {
+            out.push_back(*it);
+        }
+    }
+    out += "\"";
+    return out;
+#else
+    std::string out = "'";
+    for (std::string::const_iterator it = path.begin(); it != path.end(); ++it) {
+        if (*it == '\'') {
+            out += "'\\''";
+        } else {
+            out.push_back(*it);
+        }
+    }
+    out += "'";
+    return out;
+#endif
+}
+
+bool openDirectory(const std::string& path)
+{
+    if (path.empty()) {
+        return false;
+    }
+#if defined(_WIN32)
+    const std::string command = "start \"\" " + shellQuote(path);
+#elif defined(__APPLE__)
+    const std::string command = "open " + shellQuote(path);
+#else
+    const std::string command = "xdg-open " + shellQuote(path);
+#endif
+    return std::system(command.c_str()) == 0;
+}
+
+std::string readFileText(const std::string& path)
+{
+    std::ifstream file(path.c_str(), std::ios::binary);
+    if (!file) {
+        return "";
+    }
+    std::ostringstream os;
+    os << file.rdbuf();
+    return os.str();
+}
+
+struct AppConfig {
+    AppConfig()
+        : backendPort(8080),
+          databasePath("data/db/facescan.sqlite3"),
+          imageRoot("data/images"),
+          cameraMode("mock")
+    {
+    }
+
+    unsigned short backendPort;
+    std::string databasePath;
+    std::string imageRoot;
+    std::string cameraMode;
+};
+
+AppConfig loadAppConfig()
+{
+    AppConfig config;
+    std::string body = readFileText("config/app.json");
+    if (body.empty()) {
+        body = readFileText("config/app.example.json");
+    }
+    if (body.empty()) {
+        return config;
+    }
+
+    const int port = jsonIntValue(body, "backendPort");
+    const std::string database = jsonStringValue(body, "database");
+    const std::string imageRoot = jsonStringValue(body, "imageRoot");
+    const std::string cameraMode = jsonStringValue(body, "cameraMode");
+    if (port > 0 && port <= 65535) {
+        config.backendPort = static_cast<unsigned short>(port);
+    }
+    if (!database.empty()) {
+        config.databasePath = database;
+    }
+    if (!imageRoot.empty()) {
+        config.imageRoot = imageRoot;
+    }
+    if (!cameraMode.empty()) {
+        config.cameraMode = cameraMode;
+    }
+    return config;
+}
+
 class Database {
 public:
     explicit Database(const std::string& filePath) : db_(NULL)
     {
-        ensureDirectory("data/db");
+        ensureDirectory(parentDirectory(filePath));
         if (sqlite3_open(filePath.c_str(), &db_) != SQLITE_OK) {
             throw std::runtime_error("Cannot open SQLite database");
         }
+        exec("PRAGMA foreign_keys=ON;");
         exec("PRAGMA journal_mode=WAL;");
         exec("CREATE TABLE IF NOT EXISTS patient ("
              "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -275,10 +411,14 @@ public:
         exec("CREATE TABLE IF NOT EXISTS orders ("
              "id INTEGER PRIMARY KEY AUTOINCREMENT,"
              "patient_id INTEGER NOT NULL,"
+             "order_no TEXT,"
              "status TEXT NOT NULL,"
              "created_at TEXT NOT NULL,"
              "FOREIGN KEY(patient_id) REFERENCES patient(id)"
              ");");
+        addColumnIfMissing("orders", "order_no", "TEXT");
+        exec("UPDATE orders SET order_no=(SELECT patient_no FROM patient WHERE patient.id=orders.patient_id)||'-'||id "
+             "WHERE order_no IS NULL OR order_no='';");
         exec("CREATE TABLE IF NOT EXISTS scan_result ("
              "id INTEGER PRIMARY KEY AUTOINCREMENT,"
              "order_id INTEGER NOT NULL,"
@@ -301,7 +441,9 @@ public:
     {
         std::lock_guard<std::mutex> lock(mutex_);
         std::vector<Patient> out;
-        std::string sql = "SELECT id, patient_no, name, gender, age, phone, doctor, remark, created_at FROM patient";
+        std::string sql = "SELECT id, patient_no, "
+            "(SELECT order_no FROM orders WHERE orders.patient_id=patient.id ORDER BY id DESC LIMIT 1) AS order_no, "
+            "name, gender, age, phone, doctor, remark, created_at FROM patient";
         std::vector<std::string> params;
         std::vector<std::string> clauses;
         if (!keyword.empty()) {
@@ -338,7 +480,9 @@ public:
     Patient patientById(int id)
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        sqlite3_stmt* stmt = prepare("SELECT id, patient_no, name, gender, age, phone, doctor, remark, created_at FROM patient WHERE id=?");
+        sqlite3_stmt* stmt = prepare("SELECT id, patient_no, "
+            "(SELECT order_no FROM orders WHERE orders.patient_id=patient.id ORDER BY id DESC LIMIT 1) AS order_no, "
+            "name, gender, age, phone, doctor, remark, created_at FROM patient WHERE id=?");
         sqlite3_bind_int(stmt, 1, id);
         Patient p;
         p.id = 0;
@@ -352,8 +496,10 @@ public:
     int createPatient(const Patient& patient)
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        Patient generated = patient;
+        generated.patientNo = generatePatientNoUnlocked();
         sqlite3_stmt* stmt = prepare("INSERT INTO patient(patient_no,name,gender,age,phone,doctor,remark,created_at) VALUES(?,?,?,?,?,?,?,?)");
-        bindPatientFields(stmt, patient);
+        bindPatientFields(stmt, generated);
         stepDone(stmt);
         sqlite3_finalize(stmt);
         const int id = static_cast<int>(sqlite3_last_insert_rowid(db_));
@@ -361,18 +507,38 @@ public:
         return id;
     }
 
+    bool deletePatient(int id)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        sqlite3_stmt* scanStmt = prepare("DELETE FROM scan_result WHERE order_id IN (SELECT id FROM orders WHERE patient_id=?)");
+        sqlite3_bind_int(scanStmt, 1, id);
+        stepDone(scanStmt);
+        sqlite3_finalize(scanStmt);
+
+        sqlite3_stmt* orderStmt = prepare("DELETE FROM orders WHERE patient_id=?");
+        sqlite3_bind_int(orderStmt, 1, id);
+        stepDone(orderStmt);
+        sqlite3_finalize(orderStmt);
+
+        sqlite3_stmt* patientStmt = prepare("DELETE FROM patient WHERE id=?");
+        sqlite3_bind_int(patientStmt, 1, id);
+        stepDone(patientStmt);
+        const bool changed = sqlite3_changes(db_) > 0;
+        sqlite3_finalize(patientStmt);
+        return changed;
+    }
+
     bool updatePatient(int id, const Patient& patient)
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        sqlite3_stmt* stmt = prepare("UPDATE patient SET patient_no=?, name=?, gender=?, age=?, phone=?, doctor=?, remark=? WHERE id=?");
-        sqlite3_bind_text(stmt, 1, patient.patientNo.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 2, patient.name.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 3, patient.gender.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 4, patient.age);
-        sqlite3_bind_text(stmt, 5, patient.phone.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 6, patient.doctor.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 7, patient.remark.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int(stmt, 8, id);
+        sqlite3_stmt* stmt = prepare("UPDATE patient SET name=?, gender=?, age=?, phone=?, doctor=?, remark=? WHERE id=?");
+        sqlite3_bind_text(stmt, 1, patient.name.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, patient.gender.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(stmt, 3, patient.age);
+        sqlite3_bind_text(stmt, 4, patient.phone.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 5, patient.doctor.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 6, patient.remark.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(stmt, 7, id);
         stepDone(stmt);
         const bool changed = sqlite3_changes(db_) > 0;
         sqlite3_finalize(stmt);
@@ -383,6 +549,74 @@ public:
     {
         std::lock_guard<std::mutex> lock(mutex_);
         return createOrderUnlocked(patientId);
+    }
+
+    bool deleteOrder(int orderId)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        sqlite3_stmt* scanStmt = prepare("DELETE FROM scan_result WHERE order_id=?");
+        sqlite3_bind_int(scanStmt, 1, orderId);
+        stepDone(scanStmt);
+        sqlite3_finalize(scanStmt);
+
+        sqlite3_stmt* stmt = prepare("DELETE FROM orders WHERE id=?");
+        sqlite3_bind_int(stmt, 1, orderId);
+        stepDone(stmt);
+        const bool changed = sqlite3_changes(db_) > 0;
+        sqlite3_finalize(stmt);
+        return changed;
+    }
+
+    std::string orderNo(int orderId)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        sqlite3_stmt* stmt = prepare("SELECT order_no FROM orders WHERE id=?");
+        sqlite3_bind_int(stmt, 1, orderId);
+        std::string value;
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            value = columnText(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+        return value;
+    }
+
+    std::string latestPreviewPathForOrder(int orderId)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        sqlite3_stmt* stmt = prepare("SELECT preview_path FROM scan_result WHERE order_id=? ORDER BY id DESC LIMIT 1");
+        sqlite3_bind_int(stmt, 1, orderId);
+        std::string value;
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            value = columnText(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+        return value;
+    }
+
+    std::vector<Order> ordersForPatient(int patientId)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        sqlite3_stmt* stmt = prepare(
+            "SELECT orders.id, orders.patient_id, orders.order_no, orders.status, orders.created_at, "
+            "COUNT(scan_result.id) AS scan_count "
+            "FROM orders LEFT JOIN scan_result ON scan_result.order_id=orders.id "
+            "WHERE orders.patient_id=? "
+            "GROUP BY orders.id, orders.patient_id, orders.order_no, orders.status, orders.created_at "
+            "ORDER BY orders.id DESC");
+        sqlite3_bind_int(stmt, 1, patientId);
+        std::vector<Order> orders;
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            Order order;
+            order.id = sqlite3_column_int(stmt, 0);
+            order.patientId = sqlite3_column_int(stmt, 1);
+            order.orderNo = columnText(stmt, 2);
+            order.status = columnText(stmt, 3);
+            order.createdAt = columnText(stmt, 4);
+            order.scanCount = sqlite3_column_int(stmt, 5);
+            orders.push_back(order);
+        }
+        sqlite3_finalize(stmt);
+        return orders;
     }
 
     int latestOrderId(int patientId)
@@ -450,6 +684,30 @@ private:
         }
     }
 
+    void execIgnoreError(const std::string& sql)
+    {
+        char* err = NULL;
+        if (sqlite3_exec(db_, sql.c_str(), NULL, NULL, &err) != SQLITE_OK) {
+            sqlite3_free(err);
+        }
+    }
+
+    void addColumnIfMissing(const std::string& table, const std::string& column, const std::string& type)
+    {
+        sqlite3_stmt* stmt = prepare("PRAGMA table_info(" + table + ")");
+        bool exists = false;
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            if (columnText(stmt, 1) == column) {
+                exists = true;
+                break;
+            }
+        }
+        sqlite3_finalize(stmt);
+        if (!exists) {
+            execIgnoreError("ALTER TABLE " + table + " ADD COLUMN " + column + " " + type);
+        }
+    }
+
     sqlite3_stmt* prepare(const std::string& sql)
     {
         sqlite3_stmt* stmt = NULL;
@@ -477,13 +735,14 @@ private:
         Patient p;
         p.id = sqlite3_column_int(stmt, 0);
         p.patientNo = columnText(stmt, 1);
-        p.name = columnText(stmt, 2);
-        p.gender = columnText(stmt, 3);
-        p.age = sqlite3_column_int(stmt, 4);
-        p.phone = columnText(stmt, 5);
-        p.doctor = columnText(stmt, 6);
-        p.remark = columnText(stmt, 7);
-        p.createdAt = columnText(stmt, 8);
+        p.orderNo = columnText(stmt, 2);
+        p.name = columnText(stmt, 3);
+        p.gender = columnText(stmt, 4);
+        p.age = sqlite3_column_int(stmt, 5);
+        p.phone = columnText(stmt, 6);
+        p.doctor = columnText(stmt, 7);
+        p.remark = columnText(stmt, 8);
+        p.createdAt = columnText(stmt, 9);
         return p;
     }
 
@@ -501,15 +760,71 @@ private:
 
     int createOrderUnlocked(int patientId)
     {
-        sqlite3_stmt* stmt = prepare("INSERT INTO orders(patient_id,status,created_at) VALUES(?,?,?)");
+        const std::string patientNo = patientNoUnlocked(patientId);
+        const int sequence = nextOrderSequenceUnlocked(patientId);
+        const std::string orderNo = patientNo + "-" + toString(sequence);
+        sqlite3_stmt* stmt = prepare("INSERT INTO orders(patient_id,order_no,status,created_at) VALUES(?,?,?,?)");
         const std::string status = "created";
         const std::string created = nowText();
         sqlite3_bind_int(stmt, 1, patientId);
-        sqlite3_bind_text(stmt, 2, status.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 3, created.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, orderNo.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, status.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 4, created.c_str(), -1, SQLITE_TRANSIENT);
         stepDone(stmt);
         sqlite3_finalize(stmt);
         return static_cast<int>(sqlite3_last_insert_rowid(db_));
+    }
+
+    static std::string toString(int value)
+    {
+        std::ostringstream os;
+        os << value;
+        return os.str();
+    }
+
+    std::string patientNoUnlocked(int patientId)
+    {
+        sqlite3_stmt* stmt = prepare("SELECT patient_no FROM patient WHERE id=?");
+        sqlite3_bind_int(stmt, 1, patientId);
+        std::string value;
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            value = columnText(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+        return value.empty() ? ("P" + stampTextMs()) : value;
+    }
+
+    int nextOrderSequenceUnlocked(int patientId)
+    {
+        sqlite3_stmt* stmt = prepare("SELECT COUNT(*) FROM orders WHERE patient_id=?");
+        sqlite3_bind_int(stmt, 1, patientId);
+        int count = 0;
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            count = sqlite3_column_int(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+        return count + 1;
+    }
+
+    std::string generatePatientNoUnlocked()
+    {
+        for (int suffix = 0; suffix < 100; ++suffix) {
+            std::string candidate = "P" + stampTextMs();
+            if (suffix > 0) {
+                candidate += toString(suffix);
+            }
+            sqlite3_stmt* stmt = prepare("SELECT COUNT(*) FROM patient WHERE patient_no=?");
+            sqlite3_bind_text(stmt, 1, candidate.c_str(), -1, SQLITE_TRANSIENT);
+            int count = 0;
+            if (sqlite3_step(stmt) == SQLITE_ROW) {
+                count = sqlite3_column_int(stmt, 0);
+            }
+            sqlite3_finalize(stmt);
+            if (count == 0) {
+                return candidate;
+            }
+        }
+        return "P" + stampTextMs();
     }
 
     void seed()
@@ -539,11 +854,25 @@ private:
 
 class CameraManager {
 public:
-    CameraManager() : streaming_(false), frameIndex_(0) {}
+    explicit CameraManager(const std::string& imageRoot)
+        : imageRoot_(normalizeRoot(imageRoot)), streaming_(false), frameIndex_(0)
+    {
+    }
 
     void start() { streaming_ = true; }
     void stop() { streaming_ = false; }
     bool streaming() const { return streaming_; }
+
+    static std::string normalizeRoot(const std::string& path)
+    {
+        if (path.empty()) {
+            return "data/images";
+        }
+        if (path[path.size() - 1] == '/' || path[path.size() - 1] == '\\') {
+            return path.substr(0, path.size() - 1);
+        }
+        return path;
+    }
 
     std::string frameSvg(const std::string& view)
     {
@@ -569,12 +898,12 @@ public:
 
     std::vector<std::string> capture(int orderId)
     {
-        ensureDirectory("data/images");
-        const std::string stamp = stampText();
+        ensureDirectory(imageRoot_);
+        const std::string stamp = stampTextMs();
         const char* views[] = { "left", "front", "right", "bottom" };
         std::vector<std::string> paths;
         for (int i = 0; i < 4; ++i) {
-            const std::string filePath = "data/images/order_" + toString(orderId) + "_" + stamp + "_" + views[i] + ".svg";
+            const std::string filePath = imageRoot_ + "/order_" + toString(orderId) + "_" + stamp + "_" + views[i] + ".svg";
             std::ofstream file(filePath.c_str(), std::ios::binary);
             file << frameSvg(views[i]);
             file.close();
@@ -584,6 +913,7 @@ public:
     }
 
 private:
+    std::string imageRoot_;
     std::atomic<bool> streaming_;
     std::atomic<int> frameIndex_;
 
@@ -619,6 +949,7 @@ std::string patientJson(const Patient& p)
     os << "{"
        << jsonPair("id", p.id) << ","
        << jsonPair("patientNo", p.patientNo) << ","
+       << jsonPair("orderNo", p.orderNo) << ","
        << jsonPair("name", p.name) << ","
        << jsonPair("gender", p.gender) << ","
        << jsonPair("age", p.age) << ","
@@ -630,11 +961,26 @@ std::string patientJson(const Patient& p)
     return os.str();
 }
 
+std::string orderJson(const Order& order)
+{
+    std::ostringstream os;
+    os << "{"
+       << jsonPair("id", order.id) << ","
+       << jsonPair("patientId", order.patientId) << ","
+       << jsonPair("orderNo", order.orderNo) << ","
+       << jsonPair("status", order.status) << ","
+       << jsonPair("createdAt", order.createdAt) << ","
+       << jsonPair("scanCount", order.scanCount)
+       << "}";
+    return os.str();
+}
+
 Patient patientFromBody(const std::string& body)
 {
     Patient p;
     p.id = 0;
-    p.patientNo = jsonStringValue(body, "patientNo");
+    p.patientNo = "";
+    p.orderNo = "";
     p.name = jsonStringValue(body, "name");
     p.gender = jsonStringValue(body, "gender");
     p.age = jsonIntValue(body, "age");
@@ -642,9 +988,6 @@ Patient patientFromBody(const std::string& body)
     p.doctor = jsonStringValue(body, "doctor");
     p.remark = jsonStringValue(body, "remark");
     p.createdAt = nowText();
-    if (p.patientNo.empty()) {
-        p.patientNo = "P" + stampText();
-    }
     if (p.name.empty()) {
         p.name = "未命名患者";
     }
@@ -653,7 +996,12 @@ Patient patientFromBody(const std::string& body)
 
 class App {
 public:
-    App() : database_("data/db/facescan.sqlite3") {}
+    explicit App(const AppConfig& config)
+        : database_(config.databasePath),
+          camera_(config.imageRoot),
+          imageRoot_(CameraManager::normalizeRoot(config.imageRoot))
+    {
+    }
 
     http::response<http::string_body> handle(const http::request<http::string_body>& req)
     {
@@ -675,12 +1023,28 @@ public:
             if (req.method() == http::verb::post && path == "/api/patients") {
                 Patient p = patientFromBody(req.body());
                 const int id = database_.createPatient(p);
-                return jsonResponse(req, "{\"id\":" + toString(id) + "}");
+                Patient created = database_.patientById(id);
+                const int orderId = database_.latestOrderId(id);
+                return jsonResponse(req, "{\"id\":" + toString(id)
+                    + ",\"orderId\":" + toString(orderId)
+                    + ",\"patientNo\":\"" + escapeJson(created.patientNo)
+                    + "\",\"orderNo\":\"" + escapeJson(created.orderNo) + "\"}");
             }
             if (req.method() == http::verb::put && path.find("/api/patients/") == 0) {
                 const int id = std::atoi(path.substr(std::string("/api/patients/").size()).c_str());
                 const bool ok = database_.updatePatient(id, patientFromBody(req.body()));
                 return jsonResponse(req, std::string("{\"ok\":") + (ok ? "true" : "false") + "}");
+            }
+            if (req.method() == http::verb::delete_ && path.find("/api/patients/") == 0) {
+                const int id = std::atoi(path.substr(std::string("/api/patients/").size()).c_str());
+                const bool ok = database_.deletePatient(id);
+                return jsonResponse(req, std::string("{\"ok\":") + (ok ? "true" : "false") + "}");
+            }
+            if (req.method() == http::verb::get && path.find("/api/patients/") == 0 && path.find("/orders") != std::string::npos) {
+                const std::string prefix = "/api/patients/";
+                const std::size_t end = path.find("/orders");
+                const int patientId = std::atoi(path.substr(prefix.size(), end - prefix.size()).c_str());
+                return listOrders(req, patientId);
             }
             if (req.method() == http::verb::get && path.find("/api/patients/") == 0 && path.find("/scans") != std::string::npos) {
                 const std::string prefix = "/api/patients/";
@@ -691,7 +1055,18 @@ public:
             if (req.method() == http::verb::post && path == "/api/orders") {
                 const int patientId = jsonIntValue(req.body(), "patientId");
                 const int orderId = database_.createOrder(patientId);
-                return jsonResponse(req, "{\"id\":" + toString(orderId) + "}");
+                return jsonResponse(req, "{\"id\":" + toString(orderId) + ",\"orderNo\":\"" + escapeJson(database_.orderNo(orderId)) + "\"}");
+            }
+            if (req.method() == http::verb::delete_ && path.find("/api/orders/") == 0) {
+                const int id = std::atoi(path.substr(std::string("/api/orders/").size()).c_str());
+                const bool ok = database_.deleteOrder(id);
+                return jsonResponse(req, std::string("{\"ok\":") + (ok ? "true" : "false") + "}");
+            }
+            if (req.method() == http::verb::post && path.find("/api/orders/") == 0 && path.find("/open-folder") != std::string::npos) {
+                const std::string prefix = "/api/orders/";
+                const std::size_t end = path.find("/open-folder");
+                const int orderId = std::atoi(path.substr(prefix.size(), end - prefix.size()).c_str());
+                return openOrderFolder(req, orderId);
             }
             if (req.method() == http::verb::post && path == "/api/camera/start") {
                 camera_.start();
@@ -724,6 +1099,7 @@ public:
 private:
     Database database_;
     CameraManager camera_;
+    std::string imageRoot_;
 
     static std::string toString(int value)
     {
@@ -743,7 +1119,7 @@ private:
         res.set(http::field::content_type, contentType);
         res.set(http::field::access_control_allow_origin, "*");
         res.set(http::field::access_control_allow_headers, "Content-Type, Authorization");
-        res.set(http::field::access_control_allow_methods, "GET, POST, PUT, OPTIONS");
+        res.set(http::field::access_control_allow_methods, "GET, POST, PUT, DELETE, OPTIONS");
         res.keep_alive(req.keep_alive());
         res.body() = body;
         res.prepare_payload();
@@ -797,6 +1173,31 @@ private:
         return jsonResponse(req, os.str());
     }
 
+    http::response<http::string_body> listOrders(const http::request<http::string_body>& req, int patientId)
+    {
+        const std::vector<Order> orders = database_.ordersForPatient(patientId);
+        std::ostringstream os;
+        os << "{\"items\":[";
+        for (std::size_t i = 0; i < orders.size(); ++i) {
+            if (i) os << ",";
+            os << orderJson(orders[i]);
+        }
+        os << "]}";
+        return jsonResponse(req, os.str());
+    }
+
+    http::response<http::string_body> openOrderFolder(const http::request<http::string_body>& req, int orderId)
+    {
+        std::string folder = parentDirectory(database_.latestPreviewPathForOrder(orderId));
+        if (folder.empty()) {
+            folder = imageRoot_;
+        }
+        ensureDirectory(folder);
+        const bool ok = openDirectory(folder);
+        return jsonResponse(req, std::string("{\"ok\":") + (ok ? "true" : "false")
+            + ",\"path\":\"" + escapeJson(folder) + "\"}");
+    }
+
     http::response<http::string_body> capture(const http::request<http::string_body>& req)
     {
         const int patientId = jsonIntValue(req.body(), "patientId");
@@ -841,10 +1242,11 @@ void doSession(tcp::socket socket, std::shared_ptr<App> app)
 int main(int argc, char* argv[])
 {
     try {
-        const unsigned short port = argc > 1 ? static_cast<unsigned short>(std::atoi(argv[1])) : 8080;
+        const AppConfig config = loadAppConfig();
+        const unsigned short port = argc > 1 ? static_cast<unsigned short>(std::atoi(argv[1])) : config.backendPort;
         asio::io_context ioc(1);
         tcp::acceptor acceptor(ioc, tcp::endpoint(tcp::v4(), port));
-        std::shared_ptr<App> app(new App());
+        std::shared_ptr<App> app(new App(config));
         std::cout << "FaceScan backend listening on http://127.0.0.1:" << port << std::endl;
         for (;;) {
             tcp::socket socket(ioc);
