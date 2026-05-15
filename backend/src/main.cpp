@@ -289,6 +289,37 @@ std::string parentDirectory(const std::string& path)
     return path.substr(0, pos);
 }
 
+bool isAbsolutePath(const std::string& path)
+{
+    if (path.empty()) {
+        return false;
+    }
+#if defined(_WIN32)
+    return path.size() > 2 && std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':';
+#else
+    return path[0] == '/';
+#endif
+}
+
+std::string joinPath(const std::string& base, const std::string& path)
+{
+    if (path.empty() || isAbsolutePath(path) || base.empty() || base == ".") {
+        return path;
+    }
+    const char last = base[base.size() - 1];
+    if (last == '/' || last == '\\') {
+        return base + path;
+    }
+    return base + "/" + path;
+}
+
+std::string backendRootFromConfigPath(const std::string& configPath)
+{
+    const std::string configDir = parentDirectory(configPath);
+    const std::string root = parentDirectory(configDir);
+    return root.empty() ? "." : root;
+}
+
 std::string shellQuote(const std::string& path)
 {
 #if defined(_WIN32)
@@ -360,9 +391,20 @@ struct AppConfig {
 AppConfig loadAppConfig()
 {
     AppConfig config;
-    std::string body = readFileText("config/app.json");
-    if (body.empty()) {
-        body = readFileText("config/app.example.json");
+    std::string configPath;
+    std::string body;
+    const char* candidates[] = {
+        "config/app.json",
+        "config/app.example.json",
+        "backend/config/app.json",
+        "backend/config/app.example.json"
+    };
+    for (std::size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); ++i) {
+        body = readFileText(candidates[i]);
+        if (!body.empty()) {
+            configPath = candidates[i];
+            break;
+        }
     }
     if (body.empty()) {
         return config;
@@ -384,6 +426,9 @@ AppConfig loadAppConfig()
     if (!cameraMode.empty()) {
         config.cameraMode = cameraMode;
     }
+    const std::string backendRoot = backendRootFromConfigPath(configPath);
+    config.databasePath = joinPath(backendRoot, config.databasePath);
+    config.imageRoot = joinPath(backendRoot, config.imageRoot);
     return config;
 }
 

@@ -7,9 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Backend build and run from the repository root:
 
 ```bash
-cmake -S . -B build
-cmake --build build
-./build/backend/facescan_backend 8080
+cmake -S backend -B backend/build
+cmake --build backend/build
+./backend/build/facescan_backend 8080
 ```
 
 Frontend install, develop, and build:
@@ -21,14 +21,15 @@ cd frontend && npm run build
 cd frontend && npm run preview
 ```
 
-There are currently no test scripts or test files in the repository. Use `npm run build` for frontend type-checking plus production build, and `cmake --build build` for backend compile verification.
+There are currently no test scripts or test files in the repository. Use `npm run build` for frontend type-checking plus production build, and `cmake --build backend/build` for backend compile verification.
 
 ## Runtime configuration and generated data
 
-- Backend configuration is loaded from `config/app.json` if present, otherwise `config/app.example.json`.
-- Config keys are `backendPort`, `database`, `imageRoot`, and `cameraMode`; defaults point at `data/db/facescan.sqlite3` and `data/images`.
+- Backend configuration is loaded from `backend/config/app.json` if present, otherwise `backend/config/app.example.json`.
+- Config keys are `backendPort`, `database`, `imageRoot`, and `cameraMode`; relative paths are resolved from `backend/`.
+- Defaults point at `backend/data/db/facescan.sqlite3` and `backend/data/images`.
 - The backend accepts an optional port argument that overrides the config port.
-- Runtime artifacts are intentionally ignored by git: `build/`, `frontend/dist/`, `frontend/node_modules/`, SQLite files under `data/db/`, and captured images under `data/images/`.
+- Runtime artifacts are intentionally ignored by git: `backend/build/`, `frontend/dist/`, `frontend/node_modules/`, SQLite files under `backend/data/db/`, and captured images under `backend/data/images/`.
 
 ## Architecture overview
 

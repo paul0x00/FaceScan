@@ -44,7 +44,7 @@ const sections = [
           </article>
           <article>
             <strong>数据目录</strong>
-            <span>data/images · data/db</span>
+            <span>backend/data/images · backend/data/db</span>
           </article>
           <article>
             <strong>第一阶段范围</strong>

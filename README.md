@@ -13,11 +13,15 @@
 
 ## 启动
 
+后端：
+
 ```bash
-cmake -S . -B build
-cmake --build build
-./build/backend/facescan_backend 8080
+cmake -S backend -B backend/build
+cmake --build backend/build
+./backend/build/facescan_backend 8080
 ```
+
+前端：
 
 ```bash
 cd frontend
@@ -27,3 +31,12 @@ npm run dev -- --host 127.0.0.1
 
 前端默认访问 `http://127.0.0.1:8080/api`。
 
+## 项目结构约定
+
+- `backend/` 是完整后端工程，包含 CMake、源码、配置示例和运行数据目录。
+- `backend/CMakeLists.txt` 是后端 CMake 入口。
+- `backend/config/app.example.json` 是后端配置示例；本地私有配置可写到 `backend/config/app.json`。
+- `backend/data/` 是后端运行数据目录，SQLite 和采图文件都放在这里。
+- `backend/build/` 是后端 CMake 生成目录，`compile_commands.json` 也只保留在这里。
+- `frontend/` 是完整前端工程，包含 Vite、Vue 源码和前端依赖配置。
+- 根目录只放仓库级文档、通用配置和前后端目录，不再放后端构建入口或后端运行数据。

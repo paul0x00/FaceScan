@@ -1,10 +1,10 @@
 {
-  "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/backend/build/compile_commands.json",
   "C_Cpp.default.configurationProvider": "",
   "C_Cpp.default.intelliSenseMode": "macos-clang-arm64",
   "C_Cpp.default.cppStandard": "c++11",
   "clangd.arguments": [
-    "--compile-commands-dir=${workspaceFolder}/build",
+    "--compile-commands-dir=${workspaceFolder}/backend/build",
     "--query-driver=/usr/bin/c++,/usr/bin/clang++,/opt/homebrew/bin/*"
   ]
 }
