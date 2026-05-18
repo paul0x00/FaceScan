@@ -15,10 +15,17 @@ find_package(Boost REQUIRED)
 find_package(SQLite3 REQUIRED)
 
 add_executable(facescan_backend
+    src/camera/camera_manager.cpp
+    src/common/file_utils.cpp
+    src/common/json_utils.cpp
+    src/common/time_utils.cpp
+    src/config/app_config.cpp
+    src/database/database.cpp
     src/main.cpp
 )
 
 target_include_directories(facescan_backend PRIVATE
+    src
     ${SQLite3_INCLUDE_DIRS}
 )
 
