@@ -2,9 +2,9 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Camera, Pause, Play, RotateCcw, SlidersHorizontal } from 'lucide-vue-next'
-import { ElMessage } from 'element-plus'
+import { ElLoading, ElMessage } from 'element-plus'
 import StepHeader from '../components/StepHeader.vue'
-import { capture, createOrder, fetchOrders, startCamera, stopCamera } from '../api/client'
+import { capture, createOrder, fetchOrders, reconstructOrder, startCamera, stopCamera } from '../api/client'
 
 const route = useRoute()
 const router = useRouter()
@@ -67,11 +67,26 @@ function resetCameraParams() {
 
 async function shoot() {
   capturing.value = true
+  const loading = ElLoading.service({
+    lock: true,
+    text: '同步采图完成后正在生成彩色点云...',
+    background: 'rgba(238, 242, 245, 0.74)'
+  })
   try {
     const result = await capture(patientId.value, orderId.value)
-    ElMessage.success(`同步采图完成，保存 ${result.paths.length} 张图像`)
-    router.push(`/send/${patientId.value}`)
+    const pointCloud = await reconstructOrder(result.orderId)
+    ElMessage.success(`点云生成完成，${pointCloud.pointCount} 个点`)
+    router.push({
+      path: `/pointcloud/${patientId.value}`,
+      query: {
+        orderId: String(result.orderId),
+        plyPath: pointCloud.plyPath
+      }
+    })
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '点云生成失败')
   } finally {
+    loading.close()
     capturing.value = false
   }
 }

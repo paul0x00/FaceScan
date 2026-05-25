@@ -3,6 +3,9 @@
 #include "common/file_utils.hpp"
 #include "common/time_utils.hpp"
 
+#include <algorithm>
+#include <map>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 
@@ -42,10 +45,12 @@ Database::Database(const std::string& filePath) : db_(NULL)
          "id INTEGER PRIMARY KEY AUTOINCREMENT,"
          "order_id INTEGER NOT NULL,"
          "ply_path TEXT,"
+         "image_paths TEXT,"
          "preview_path TEXT NOT NULL,"
          "created_at TEXT NOT NULL,"
          "FOREIGN KEY(order_id) REFERENCES orders(id)"
          ");");
+    addColumnIfMissing("scan_result", "image_paths", "TEXT");
     seed();
 }
 
@@ -129,6 +134,7 @@ int Database::createPatient(const Patient& patient)
 bool Database::deletePatient(int id)
 {
     std::lock_guard<std::mutex> lock(mutex_);
+    exec("BEGIN IMMEDIATE;");
     sqlite3_stmt* scanStmt = prepare("DELETE FROM scan_result WHERE order_id IN (SELECT id FROM orders WHERE patient_id=?)");
     sqlite3_bind_int(scanStmt, 1, id);
     stepDone(scanStmt);
@@ -144,6 +150,9 @@ bool Database::deletePatient(int id)
     stepDone(patientStmt);
     const bool changed = sqlite3_changes(db_) > 0;
     sqlite3_finalize(patientStmt);
+    cleanupOrphansUnlocked();
+    exec("COMMIT;");
+    execIgnoreError("PRAGMA optimize;");
     return changed;
 }
 
@@ -173,6 +182,7 @@ int Database::createOrder(int patientId)
 bool Database::deleteOrder(int orderId)
 {
     std::lock_guard<std::mutex> lock(mutex_);
+    exec("BEGIN IMMEDIATE;");
     sqlite3_stmt* scanStmt = prepare("DELETE FROM scan_result WHERE order_id=?");
     sqlite3_bind_int(scanStmt, 1, orderId);
     stepDone(scanStmt);
@@ -183,7 +193,26 @@ bool Database::deleteOrder(int orderId)
     stepDone(stmt);
     const bool changed = sqlite3_changes(db_) > 0;
     sqlite3_finalize(stmt);
+    cleanupOrphansUnlocked();
+    exec("COMMIT;");
+    execIgnoreError("PRAGMA optimize;");
     return changed;
+}
+
+Patient Database::patientByOrderId(int orderId)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    sqlite3_stmt* stmt = prepare("SELECT patient.id, patient.patient_no, orders.order_no, "
+        "patient.name, patient.gender, patient.age, patient.phone, patient.doctor, patient.remark, patient.created_at "
+        "FROM patient JOIN orders ON orders.patient_id=patient.id WHERE orders.id=?");
+    sqlite3_bind_int(stmt, 1, orderId);
+    Patient p;
+    p.id = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        p = readPatient(stmt);
+    }
+    sqlite3_finalize(stmt);
+    return p;
 }
 
 std::string Database::orderNo(int orderId)
@@ -199,10 +228,110 @@ std::string Database::orderNo(int orderId)
     return value;
 }
 
+void Database::syncDataRoot(const std::vector<DataRootPatient>& patients)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    try {
+        exec("BEGIN IMMEDIATE;");
+
+        std::set<std::string> scannedPatientNos;
+        std::map<std::string, std::set<std::string> > scannedOrderNos;
+        for (std::size_t i = 0; i < patients.size(); ++i) {
+            if (patients[i].patientNo.empty()) {
+                continue;
+            }
+            scannedPatientNos.insert(patients[i].patientNo);
+            std::set<std::string>& orderSet = scannedOrderNos[patients[i].patientNo];
+            for (std::size_t j = 0; j < patients[i].orders.size(); ++j) {
+                if (!patients[i].orders[j].orderNo.empty()) {
+                    orderSet.insert(patients[i].orders[j].orderNo);
+                }
+            }
+        }
+
+        std::vector<int> missingPatientIds;
+        sqlite3_stmt* patientStmt = prepare("SELECT id, patient_no FROM patient");
+        while (sqlite3_step(patientStmt) == SQLITE_ROW) {
+            const int id = sqlite3_column_int(patientStmt, 0);
+            const std::string patientNo = columnText(patientStmt, 1);
+            if (scannedPatientNos.find(patientNo) == scannedPatientNos.end()) {
+                missingPatientIds.push_back(id);
+            }
+        }
+        sqlite3_finalize(patientStmt);
+
+        for (std::size_t i = 0; i < missingPatientIds.size(); ++i) {
+            sqlite3_stmt* scanStmt = prepare("DELETE FROM scan_result WHERE order_id IN (SELECT id FROM orders WHERE patient_id=?)");
+            sqlite3_bind_int(scanStmt, 1, missingPatientIds[i]);
+            stepDone(scanStmt);
+            sqlite3_finalize(scanStmt);
+
+            sqlite3_stmt* orderStmt = prepare("DELETE FROM orders WHERE patient_id=?");
+            sqlite3_bind_int(orderStmt, 1, missingPatientIds[i]);
+            stepDone(orderStmt);
+            sqlite3_finalize(orderStmt);
+
+            sqlite3_stmt* deletePatientStmt = prepare("DELETE FROM patient WHERE id=?");
+            sqlite3_bind_int(deletePatientStmt, 1, missingPatientIds[i]);
+            stepDone(deletePatientStmt);
+            sqlite3_finalize(deletePatientStmt);
+        }
+
+        for (std::size_t i = 0; i < patients.size(); ++i) {
+            if (patients[i].patientNo.empty()) {
+                continue;
+            }
+            const int patientId = upsertPatientUnlocked(patients[i]);
+            const std::set<std::string>& orderSet = scannedOrderNos[patients[i].patientNo];
+
+            std::vector<int> missingOrderIds;
+            sqlite3_stmt* existingOrderStmt = prepare("SELECT id, order_no FROM orders WHERE patient_id=?");
+            sqlite3_bind_int(existingOrderStmt, 1, patientId);
+            while (sqlite3_step(existingOrderStmt) == SQLITE_ROW) {
+                const int id = sqlite3_column_int(existingOrderStmt, 0);
+                const std::string orderNo = columnText(existingOrderStmt, 1);
+                if (orderSet.find(orderNo) == orderSet.end()) {
+                    missingOrderIds.push_back(id);
+                }
+            }
+            sqlite3_finalize(existingOrderStmt);
+
+            for (std::size_t j = 0; j < missingOrderIds.size(); ++j) {
+                sqlite3_stmt* deleteScanStmt = prepare("DELETE FROM scan_result WHERE order_id=?");
+                sqlite3_bind_int(deleteScanStmt, 1, missingOrderIds[j]);
+                stepDone(deleteScanStmt);
+                sqlite3_finalize(deleteScanStmt);
+
+                sqlite3_stmt* deleteOrderStmt = prepare("DELETE FROM orders WHERE id=?");
+                sqlite3_bind_int(deleteOrderStmt, 1, missingOrderIds[j]);
+                stepDone(deleteOrderStmt);
+                sqlite3_finalize(deleteOrderStmt);
+            }
+
+            for (std::size_t j = 0; j < patients[i].orders.size(); ++j) {
+                if (patients[i].orders[j].orderNo.empty()) {
+                    continue;
+                }
+                const int orderId = upsertOrderUnlocked(patientId, patients[i].orders[j]);
+                replaceOrderScanUnlocked(orderId, patients[i].orders[j]);
+            }
+        }
+
+        cleanupOrphansUnlocked();
+        exec("COMMIT;");
+        execIgnoreError("PRAGMA optimize;");
+    } catch (...) {
+        execIgnoreError("ROLLBACK;");
+        throw;
+    }
+}
+
 std::string Database::latestPreviewPathForOrder(int orderId)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    sqlite3_stmt* stmt = prepare("SELECT preview_path FROM scan_result WHERE order_id=? ORDER BY id DESC LIMIT 1");
+    sqlite3_stmt* stmt = prepare(
+        "SELECT CASE WHEN ply_path IS NOT NULL AND ply_path<>'' THEN ply_path ELSE preview_path END "
+        "FROM scan_result WHERE order_id=? ORDER BY id DESC LIMIT 1");
     sqlite3_bind_int(stmt, 1, orderId);
     std::string value;
     if (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -212,12 +341,85 @@ std::string Database::latestPreviewPathForOrder(int orderId)
     return value;
 }
 
+std::string Database::latestPlyPathForOrder(int orderId)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    sqlite3_stmt* stmt = prepare(
+        "SELECT ply_path FROM scan_result "
+        "WHERE order_id=? AND ply_path IS NOT NULL AND ply_path<>'' "
+        "ORDER BY id DESC LIMIT 1");
+    sqlite3_bind_int(stmt, 1, orderId);
+    std::string value;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        value = columnText(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    return value;
+}
+
+std::string Database::latestPreviewImagePathForOrder(int orderId)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    sqlite3_stmt* stmt = prepare(
+        "SELECT preview_path FROM scan_result "
+        "WHERE order_id=? AND preview_path IS NOT NULL AND preview_path<>'' "
+        "ORDER BY id DESC LIMIT 1");
+    sqlite3_bind_int(stmt, 1, orderId);
+    std::string value;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        value = columnText(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    return value;
+}
+
+std::vector<std::string> Database::latestImagePathsForOrder(int orderId, int limit)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const int cappedLimit = limit <= 0 ? 4 : std::min(limit, 24);
+    sqlite3_stmt* groupedStmt = prepare(
+        "SELECT image_paths FROM scan_result "
+        "WHERE order_id=? AND image_paths IS NOT NULL AND image_paths<>'' "
+        "ORDER BY id DESC LIMIT 1");
+    sqlite3_bind_int(groupedStmt, 1, orderId);
+    std::vector<std::string> groupedPaths;
+    if (sqlite3_step(groupedStmt) == SQLITE_ROW) {
+        groupedPaths = splitLines(columnText(groupedStmt, 0));
+    }
+    sqlite3_finalize(groupedStmt);
+    if (!groupedPaths.empty()) {
+        if (static_cast<int>(groupedPaths.size()) > cappedLimit) {
+            groupedPaths.resize(static_cast<std::size_t>(cappedLimit));
+        }
+        return groupedPaths;
+    }
+
+    sqlite3_stmt* stmt = prepare(
+        "SELECT preview_path FROM scan_result "
+        "WHERE order_id=? AND preview_path<>'' AND (ply_path IS NULL OR ply_path='') "
+        "ORDER BY id DESC LIMIT ?");
+    sqlite3_bind_int(stmt, 1, orderId);
+    sqlite3_bind_int(stmt, 2, cappedLimit);
+    std::vector<std::string> paths;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const std::string path = columnText(stmt, 0);
+        if (path.find(".ply") == std::string::npos) {
+            paths.push_back(path);
+        }
+    }
+    sqlite3_finalize(stmt);
+    std::reverse(paths.begin(), paths.end());
+    return paths;
+}
+
 std::vector<Order> Database::ordersForPatient(int patientId)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     sqlite3_stmt* stmt = prepare(
         "SELECT orders.id, orders.patient_id, orders.order_no, orders.status, orders.created_at, "
-        "COUNT(scan_result.id) AS scan_count "
+        "COUNT(scan_result.id) AS scan_count, "
+        "(SELECT preview_path FROM scan_result WHERE scan_result.order_id=orders.id ORDER BY id DESC LIMIT 1) AS preview_path, "
+        "(SELECT ply_path FROM scan_result WHERE scan_result.order_id=orders.id AND ply_path IS NOT NULL AND ply_path<>'' ORDER BY id DESC LIMIT 1) AS ply_path "
         "FROM orders LEFT JOIN scan_result ON scan_result.order_id=orders.id "
         "WHERE orders.patient_id=? "
         "GROUP BY orders.id, orders.patient_id, orders.order_no, orders.status, orders.created_at "
@@ -232,6 +434,8 @@ std::vector<Order> Database::ordersForPatient(int patientId)
         order.status = columnText(stmt, 3);
         order.createdAt = columnText(stmt, 4);
         order.scanCount = sqlite3_column_int(stmt, 5);
+        order.previewPath = columnText(stmt, 6);
+        order.plyPath = columnText(stmt, 7);
         orders.push_back(order);
     }
     sqlite3_finalize(stmt);
@@ -254,16 +458,80 @@ int Database::latestOrderId(int patientId)
     return id;
 }
 
-void Database::addScanResult(int orderId, const std::string& previewPath)
+void Database::replaceOrderCapture(int orderId, const std::vector<std::string>& imagePaths)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    sqlite3_stmt* stmt = prepare("INSERT INTO scan_result(order_id, ply_path, preview_path, created_at) VALUES(?,?,?,?)");
+    sqlite3_stmt* deleteStmt = prepare("DELETE FROM scan_result WHERE order_id=?");
+    sqlite3_bind_int(deleteStmt, 1, orderId);
+    stepDone(deleteStmt);
+    sqlite3_finalize(deleteStmt);
+
+    sqlite3_stmt* stmt = prepare("INSERT INTO scan_result(order_id, ply_path, image_paths, preview_path, created_at) VALUES(?,?,?,?,?)");
     const std::string empty;
     const std::string created = nowText();
+    const std::string imagePathText = joinLines(imagePaths);
+    const std::string previewPath = imagePaths.empty() ? empty : imagePaths[0];
     sqlite3_bind_int(stmt, 1, orderId);
     sqlite3_bind_text(stmt, 2, empty.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, imagePathText.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, previewPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, created.c_str(), -1, SQLITE_TRANSIENT);
+    stepDone(stmt);
+    sqlite3_finalize(stmt);
+}
+
+void Database::setPointCloudResult(int orderId, const std::string& plyPath, const std::string& previewPath)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    sqlite3_stmt* stmt = prepare(
+        "UPDATE scan_result SET ply_path=?, preview_path=CASE WHEN ?<>'' THEN ? ELSE preview_path END, created_at=? WHERE order_id=?");
+    const std::string created = nowText();
+    sqlite3_bind_text(stmt, 1, plyPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, previewPath.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 3, previewPath.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 4, created.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 5, orderId);
+    stepDone(stmt);
+    const bool changed = sqlite3_changes(db_) > 0;
+    sqlite3_finalize(stmt);
+    if (!changed) {
+        sqlite3_stmt* insertStmt = prepare("INSERT INTO scan_result(order_id, ply_path, image_paths, preview_path, created_at) VALUES(?,?,?,?,?)");
+        const std::string empty;
+        const std::string preview = previewPath.empty() ? plyPath : previewPath;
+        sqlite3_bind_int(insertStmt, 1, orderId);
+        sqlite3_bind_text(insertStmt, 2, plyPath.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(insertStmt, 3, empty.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(insertStmt, 4, preview.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(insertStmt, 5, created.c_str(), -1, SQLITE_TRANSIENT);
+        stepDone(insertStmt);
+        sqlite3_finalize(insertStmt);
+    }
+}
+
+void Database::replaceStoredPathPrefix(const std::string& oldPrefix, const std::string& newPrefix)
+{
+    if (oldPrefix.empty() || newPrefix.empty() || oldPrefix == newPrefix) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    sqlite3_stmt* stmt = prepare(
+        "UPDATE scan_result SET "
+        "ply_path=CASE WHEN ply_path IS NOT NULL THEN replace(ply_path, ?, ?) ELSE ply_path END,"
+        "preview_path=replace(preview_path, ?, ?),"
+        "image_paths=CASE WHEN image_paths IS NOT NULL THEN replace(image_paths, ?, ?) ELSE image_paths END "
+        "WHERE (ply_path IS NOT NULL AND ply_path LIKE ?) "
+        "OR preview_path LIKE ? "
+        "OR (image_paths IS NOT NULL AND image_paths LIKE ?)");
+    const std::string like = oldPrefix + "%";
+    sqlite3_bind_text(stmt, 1, oldPrefix.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, newPrefix.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, oldPrefix.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, newPrefix.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, oldPrefix.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6, newPrefix.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 7, like.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 8, like.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 9, like.c_str(), -1, SQLITE_TRANSIENT);
     stepDone(stmt);
     sqlite3_finalize(stmt);
 }
@@ -272,7 +540,7 @@ std::vector<ScanResult> Database::scansForPatient(int patientId)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     sqlite3_stmt* stmt = prepare(
-        "SELECT scan_result.id, scan_result.order_id, scan_result.preview_path, scan_result.created_at "
+        "SELECT scan_result.id, scan_result.order_id, scan_result.ply_path, scan_result.preview_path, scan_result.image_paths, scan_result.created_at "
         "FROM scan_result JOIN orders ON orders.id=scan_result.order_id "
         "WHERE orders.patient_id=? ORDER BY scan_result.id DESC");
     sqlite3_bind_int(stmt, 1, patientId);
@@ -281,8 +549,10 @@ std::vector<ScanResult> Database::scansForPatient(int patientId)
         ScanResult s;
         s.id = sqlite3_column_int(stmt, 0);
         s.orderId = sqlite3_column_int(stmt, 1);
-        s.previewPath = columnText(stmt, 2);
-        s.createdAt = columnText(stmt, 3);
+        s.plyPath = columnText(stmt, 2);
+        s.previewPath = columnText(stmt, 3);
+        s.imagePaths = splitLines(columnText(stmt, 4));
+        s.createdAt = columnText(stmt, 5);
         scans.push_back(s);
     }
     sqlite3_finalize(stmt);
@@ -380,6 +650,136 @@ std::string Database::toString(int value)
     return os.str();
 }
 
+std::string Database::joinLines(const std::vector<std::string>& values)
+{
+    std::ostringstream os;
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        if (i) {
+            os << "\n";
+        }
+        os << values[i];
+    }
+    return os.str();
+}
+
+std::vector<std::string> Database::splitLines(const std::string& value)
+{
+    std::vector<std::string> out;
+    std::istringstream input(value);
+    std::string line;
+    while (std::getline(input, line)) {
+        if (!line.empty()) {
+            out.push_back(line);
+        }
+    }
+    return out;
+}
+
+int Database::upsertPatientUnlocked(const DataRootPatient& patient)
+{
+    sqlite3_stmt* findStmt = prepare("SELECT id FROM patient WHERE patient_no=?");
+    sqlite3_bind_text(findStmt, 1, patient.patientNo.c_str(), -1, SQLITE_TRANSIENT);
+    int id = 0;
+    if (sqlite3_step(findStmt) == SQLITE_ROW) {
+        id = sqlite3_column_int(findStmt, 0);
+    }
+    sqlite3_finalize(findStmt);
+
+    const std::string name = patient.name.empty() ? patient.patientNo : patient.name;
+    const std::string createdAt = patient.createdAt.empty() ? nowText() : patient.createdAt;
+    if (id > 0) {
+        sqlite3_stmt* updateStmt = prepare(
+            "UPDATE patient SET name=?, created_at=CASE WHEN created_at='' THEN ? ELSE created_at END WHERE id=?");
+        sqlite3_bind_text(updateStmt, 1, name.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(updateStmt, 2, createdAt.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(updateStmt, 3, id);
+        stepDone(updateStmt);
+        sqlite3_finalize(updateStmt);
+        return id;
+    }
+
+    sqlite3_stmt* insertStmt = prepare(
+        "INSERT INTO patient(patient_no,name,gender,age,phone,doctor,remark,created_at) VALUES(?,?,?,?,?,?,?,?)");
+    const std::string empty;
+    sqlite3_bind_text(insertStmt, 1, patient.patientNo.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(insertStmt, 2, name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(insertStmt, 3, empty.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(insertStmt, 4, 0);
+    sqlite3_bind_text(insertStmt, 5, empty.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(insertStmt, 6, empty.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(insertStmt, 7, empty.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(insertStmt, 8, createdAt.c_str(), -1, SQLITE_TRANSIENT);
+    stepDone(insertStmt);
+    sqlite3_finalize(insertStmt);
+    return static_cast<int>(sqlite3_last_insert_rowid(db_));
+}
+
+int Database::upsertOrderUnlocked(int patientId, const DataRootOrder& order)
+{
+    sqlite3_stmt* findStmt = prepare("SELECT id FROM orders WHERE patient_id=? AND order_no=?");
+    sqlite3_bind_int(findStmt, 1, patientId);
+    sqlite3_bind_text(findStmt, 2, order.orderNo.c_str(), -1, SQLITE_TRANSIENT);
+    int id = 0;
+    if (sqlite3_step(findStmt) == SQLITE_ROW) {
+        id = sqlite3_column_int(findStmt, 0);
+    }
+    sqlite3_finalize(findStmt);
+
+    const std::string createdAt = order.createdAt.empty() ? nowText() : order.createdAt;
+    if (id > 0) {
+        sqlite3_stmt* updateStmt = prepare(
+            "UPDATE orders SET status=?, created_at=CASE WHEN created_at='' THEN ? ELSE created_at END WHERE id=?");
+        const std::string status = "synced";
+        sqlite3_bind_text(updateStmt, 1, status.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(updateStmt, 2, createdAt.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(updateStmt, 3, id);
+        stepDone(updateStmt);
+        sqlite3_finalize(updateStmt);
+        return id;
+    }
+
+    sqlite3_stmt* insertStmt = prepare("INSERT INTO orders(patient_id,order_no,status,created_at) VALUES(?,?,?,?)");
+    const std::string status = "synced";
+    sqlite3_bind_int(insertStmt, 1, patientId);
+    sqlite3_bind_text(insertStmt, 2, order.orderNo.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(insertStmt, 3, status.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(insertStmt, 4, createdAt.c_str(), -1, SQLITE_TRANSIENT);
+    stepDone(insertStmt);
+    sqlite3_finalize(insertStmt);
+    return static_cast<int>(sqlite3_last_insert_rowid(db_));
+}
+
+void Database::replaceOrderScanUnlocked(int orderId, const DataRootOrder& order)
+{
+    sqlite3_stmt* deleteStmt = prepare("DELETE FROM scan_result WHERE order_id=?");
+    sqlite3_bind_int(deleteStmt, 1, orderId);
+    stepDone(deleteStmt);
+    sqlite3_finalize(deleteStmt);
+
+    std::string previewPath = order.previewPath;
+    if (previewPath.empty() && !order.imagePaths.empty()) {
+        previewPath = order.imagePaths[0];
+    }
+    if (previewPath.empty()) {
+        previewPath = order.plyPath;
+    }
+    if (previewPath.empty() && order.imagePaths.empty() && order.plyPath.empty()) {
+        return;
+    }
+
+    sqlite3_stmt* insertStmt = prepare(
+        "INSERT INTO scan_result(order_id, ply_path, image_paths, preview_path, created_at) VALUES(?,?,?,?,?)");
+    const std::string createdAt = order.createdAt.empty() ? nowText() : order.createdAt;
+    const std::string imagePathText = joinLines(order.imagePaths);
+    sqlite3_bind_int(insertStmt, 1, orderId);
+    sqlite3_bind_text(insertStmt, 2, order.plyPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(insertStmt, 3, imagePathText.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(insertStmt, 4, previewPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(insertStmt, 5, createdAt.c_str(), -1, SQLITE_TRANSIENT);
+    stepDone(insertStmt);
+    sqlite3_finalize(insertStmt);
+}
+
 int Database::createOrderUnlocked(int patientId)
 {
     const std::string patientNo = patientNoUnlocked(patientId);
@@ -440,6 +840,12 @@ std::string Database::generatePatientNoUnlocked()
         }
     }
     return "P" + stampTextMs();
+}
+
+void Database::cleanupOrphansUnlocked()
+{
+    execIgnoreError("DELETE FROM scan_result WHERE order_id NOT IN (SELECT id FROM orders);");
+    execIgnoreError("DELETE FROM orders WHERE patient_id NOT IN (SELECT id FROM patient);");
 }
 
 void Database::seed()

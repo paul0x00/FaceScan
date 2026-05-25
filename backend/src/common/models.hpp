@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace facescan {
 
@@ -20,7 +21,9 @@ struct Patient {
 struct ScanResult {
     int id;
     int orderId;
+    std::string plyPath;
     std::string previewPath;
+    std::vector<std::string> imagePaths;
     std::string createdAt;
 };
 
@@ -31,6 +34,23 @@ struct Order {
     std::string status;
     std::string createdAt;
     int scanCount;
+    std::string previewPath;
+    std::string plyPath;
+};
+
+struct DataRootOrder {
+    std::string orderNo;
+    std::string createdAt;
+    std::vector<std::string> imagePaths;
+    std::string plyPath;
+    std::string previewPath;
+};
+
+struct DataRootPatient {
+    std::string patientNo;
+    std::string name;
+    std::string createdAt;
+    std::vector<DataRootOrder> orders;
 };
 
 } // namespace facescan

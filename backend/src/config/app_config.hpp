@@ -11,8 +11,10 @@ struct AppConfig {
     std::string databasePath;
     std::string imageRoot;
     std::string cameraMode;
+    std::string configPath;
 };
 
 AppConfig loadAppConfig();
+bool saveAppConfig(const AppConfig& config);
 
 } // namespace facescan

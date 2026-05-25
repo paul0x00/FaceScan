@@ -15,6 +15,7 @@ const router = createRouter({
     { path: '/basic/:id?', component: BasicInfoView },
     { path: '/shoot/:id', component: ShootView },
     { path: '/send/:id', component: SendView },
+    { path: '/pointcloud/:id', component: () => import('../views/PointCloudView.vue') },
     { path: '/settings', component: SettingsView }
   ]
 })
@@ -26,4 +27,3 @@ router.beforeEach((to) => {
 })
 
 export default router
-

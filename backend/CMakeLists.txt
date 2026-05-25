@@ -13,8 +13,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Boost REQUIRED)
 find_package(SQLite3 REQUIRED)
+find_package(ZLIB REQUIRED)
 
 add_executable(facescan_backend
+    src/algorithm/color_point_cloud_sdk.cpp
     src/camera/camera_manager.cpp
     src/common/file_utils.cpp
     src/common/json_utils.cpp
@@ -32,6 +34,7 @@ target_include_directories(facescan_backend PRIVATE
 target_link_libraries(facescan_backend PRIVATE
     Boost::headers
     SQLite3::SQLite3
+    ZLIB::ZLIB
 )
 
 if(UNIX)

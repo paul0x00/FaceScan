@@ -28,6 +28,11 @@ bool CameraManager::streaming() const
     return streaming_;
 }
 
+void CameraManager::setImageRoot(const std::string& imageRoot)
+{
+    imageRoot_ = normalizeRoot(imageRoot);
+}
+
 std::string CameraManager::normalizeRoot(const std::string& path)
 {
     if (path.empty()) {
@@ -61,14 +66,13 @@ std::string CameraManager::frameSvg(const std::string& view)
     return os.str();
 }
 
-std::vector<std::string> CameraManager::capture(int orderId)
+std::vector<std::string> CameraManager::capture(const std::string& orderFolder, const std::string& orderName)
 {
-    ensureDirectory(imageRoot_);
-    const std::string stamp = stampTextMs();
+    ensureDirectory(orderFolder);
     const char* views[] = { "left", "front", "right", "bottom" };
     std::vector<std::string> paths;
     for (int i = 0; i < 4; ++i) {
-        const std::string filePath = imageRoot_ + "/order_" + toString(orderId) + "_" + stamp + "_" + views[i] + ".svg";
+        const std::string filePath = orderFolder + "/" + orderName + "_" + views[i] + ".svg";
         std::ofstream file(filePath.c_str(), std::ios::binary);
         file << frameSvg(views[i]);
         file.close();

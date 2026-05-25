@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { CalendarDays, Camera, CirclePlus, ClipboardList, Edit, FolderOpen, RotateCcw, Search, Stethoscope, Trash2, UserPlus } from 'lucide-vue-next'
+import { CalendarDays, Camera, CirclePlus, ClipboardList, Edit, FolderOpen, RefreshCw, RotateCcw, Search, Stethoscope, Trash2, UserPlus } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { createOrder, deleteOrder, deletePatient, fetchOrders, openOrderFolder } from '../api/client'
+import { createOrder, deleteOrder, deletePatient, fetchOrders, imageFileUrl, openOrderFolder } from '../api/client'
 import { usePatientStore } from '../stores/patients'
 import type { Order } from '../types'
 import LogoMark from '../components/LogoMark.vue'
@@ -17,16 +17,13 @@ const filters = reactive({
 })
 const activeId = ref(0)
 const searching = ref(false)
+const refreshing = ref(false)
 const orders = ref<Order[]>([])
 const ordersLoading = ref(false)
 
 const selected = computed(() => store.patients.find((item) => item.id === activeId.value) ?? store.patients[0])
 
-onMounted(async () => {
-  await store.load()
-  activeId.value = store.selected?.id ?? 0
-  await loadOrders()
-})
+onMounted(refreshDashboard)
 
 watch(activeId, () => {
   loadOrders()
@@ -37,6 +34,7 @@ async function search() {
   try {
     await store.load(filters)
     activeId.value = store.patients[0]?.id ?? 0
+    await loadOrders()
   } finally {
     searching.value = false
   }
@@ -46,6 +44,20 @@ async function reset() {
   filters.keyword = ''
   filters.date = ''
   await search()
+}
+
+async function refreshDashboard() {
+  refreshing.value = true
+  try {
+    const previousId = activeId.value
+    await store.load(filters)
+    activeId.value = store.patients.some((patient) => patient.id === previousId)
+      ? previousId
+      : store.patients[0]?.id ?? 0
+    await loadOrders()
+  } finally {
+    refreshing.value = false
+  }
 }
 
 function openBasic(id?: number) {
@@ -58,6 +70,10 @@ function openOrderBasic(patientId: number, orderId: number) {
 
 function openShoot(patientId: number, orderId: number) {
   router.push(`/shoot/${patientId}?orderId=${orderId}`)
+}
+
+function orderPreviewUrl(order: Order) {
+  return order.plyPath && order.previewPath ? imageFileUrl(order.previewPath) : ''
 }
 
 async function loadOrders() {
@@ -142,6 +158,9 @@ async function revealOrderFolder(order: Order) {
       <el-button class="soft-btn" :disabled="searching" @click="reset">
         <RotateCcw :size="17" />重置
       </el-button>
+      <el-button class="soft-btn" :loading="refreshing" @click="refreshDashboard">
+        <RefreshCw :size="17" />刷新
+      </el-button>
       <el-button class="primary-btn new-patient" @click="openBasic()">
         <UserPlus :size="18" />新建患者
       </el-button>
@@ -205,10 +224,11 @@ async function revealOrderFolder(order: Order) {
               </div>
             </header>
             <button class="scan-preview" type="button" @click="openShoot(selected.id, order.id)">
-              <span class="scan-placeholder">
+              <img v-if="orderPreviewUrl(order)" class="scan-preview-image" :src="orderPreviewUrl(order)" :alt="`${order.orderNo} 点云正面截图`" />
+              <span v-else class="scan-placeholder">
                 <ClipboardList :size="28" />
                 <strong>{{ order.createdAt }}</strong>
-                <small>已保存 {{ order.scanCount }} 张图像</small>
+                <small>{{ order.plyPath ? '已生成点云截图' : `已保存 ${order.scanCount} 张图像` }}</small>
               </span>
             </button>
           </article>

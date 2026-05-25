@@ -14,8 +14,26 @@ export interface Patient {
 export interface ScanResult {
   id: number
   orderId: number
+  plyPath: string
   previewPath: string
+  imagePaths: string[]
   createdAt: string
+}
+
+export interface PointCloudResult {
+  orderId: number
+  plyPath: string
+  previewPath: string
+  pointCount: number
+  bounds: {
+    minX: number
+    minY: number
+    minZ: number
+    maxX: number
+    maxY: number
+    maxZ: number
+  }
+  sourceImages: string[]
 }
 
 export interface Order {
@@ -25,6 +43,8 @@ export interface Order {
   status: string
   createdAt: string
   scanCount: number
+  previewPath: string
+  plyPath: string
 }
 
 export interface PatientForm {
@@ -36,4 +56,11 @@ export interface PatientForm {
   phone: string
   doctor: string
   remark: string
+}
+
+export interface AppSettings {
+  dataRoot: string
+  databasePath: string
+  configPath: string
+  cameraMode: string
 }

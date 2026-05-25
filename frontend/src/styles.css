@@ -587,6 +587,27 @@ button:disabled,
   box-shadow: inset 0 0 0 2px rgba(47, 112, 183, 0.45);
 }
 
+.readonly-control,
+.readonly-control .el-input__wrapper,
+.readonly-control .el-input__inner,
+.el-select.is-disabled,
+.el-select.is-disabled .el-select__wrapper {
+  cursor: not-allowed;
+}
+
+.readonly-control .el-input__wrapper,
+.readonly-control .el-input__wrapper:hover,
+.el-select.is-disabled .el-select__wrapper,
+.el-select.is-disabled .el-select__wrapper:hover {
+  background: #eef2f5;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.readonly-control .el-input__inner {
+  pointer-events: none;
+  user-select: none;
+}
+
 .basic-form .el-input-number .el-input__wrapper {
   padding-left: 0;
 }
@@ -943,9 +964,11 @@ button:disabled,
 }
 
 .scan-preview {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   width: calc(100% - 20px);
   height: 202px;
   margin: 10px;
@@ -963,12 +986,26 @@ button:disabled,
   box-shadow: inset 0 0 0 1px #d9ecff;
 }
 
+.scan-preview-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .scan-placeholder {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  padding: 10px 12px;
   font-weight: 800;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(216, 226, 234, 0.88);
+  border-radius: 7px;
 }
 
 .scan-placeholder small {
@@ -1103,7 +1140,9 @@ button:disabled,
   align-items: center;
   justify-content: center;
   gap: 6px;
+  min-width: 92px;
   height: 34px;
+  padding: 0 12px;
   color: #35404c;
   font-size: 13px;
   font-weight: 900;
@@ -1191,6 +1230,7 @@ button:disabled,
 .send-summary {
   display: flex;
   align-items: stretch;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -1200,7 +1240,8 @@ button:disabled,
   grid-template-rows: auto auto;
   align-items: center;
   column-gap: 10px;
-  min-width: 160px;
+  flex: 1 1 142px;
+  min-width: 142px;
   padding: 12px 14px;
   text-align: left;
   background: #fff;
@@ -1236,14 +1277,143 @@ button:disabled,
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
+  width: 100%;
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
 }
 
+.pointcloud-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: #f7fbfb;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+}
+
+.pointcloud-result div {
+  min-width: 0;
+}
+
+.pointcloud-result span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pointcloud-result strong {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pointcloud-result .mini-action {
+  flex: 0 0 auto;
+  min-width: 104px;
+  white-space: nowrap;
+}
+
 .done-btn {
   margin-left: auto;
+}
+
+.pointcloud-page {
+  overflow: hidden;
+}
+
+.pointcloud-workspace {
+  display: grid;
+  grid-template-columns: 380px minmax(0, 1fr);
+  gap: 18px;
+  height: calc(100% - 64px);
+  padding: 18px;
+}
+
+.pointcloud-workspace .form-panel {
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+}
+
+.pointcloud-toolbar {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.pointcloud-toolbar .soft-btn {
+  width: 100%;
+}
+
+.pointcloud-meta {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.pointcloud-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.pointcloud-meta strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.pointcloud-stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #f4f8fa;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+}
+
+.pointcloud-viewer {
+  position: absolute;
+  inset: 0;
+}
+
+.pointcloud-viewer canvas {
+  display: block;
+}
+
+.pointcloud-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 900;
+  background: rgba(247, 250, 252, 0.84);
+}
+
+.pointcloud-overlay.error {
+  color: var(--red);
 }
 
 .settings-header {
@@ -1318,6 +1488,62 @@ button:disabled,
 .settings-content h2 {
   margin: 8px 0 20px;
   font-size: 24px;
+}
+
+.settings-section {
+  max-width: 880px;
+}
+
+.directory-setting {
+  padding: 18px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.directory-setting header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+}
+
+.directory-setting strong {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 16px;
+}
+
+.directory-setting span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.settings-path-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.settings-path-meta {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.settings-path-meta span {
+  overflow-wrap: anywhere;
+  color: #50606f;
+}
+
+.nowrap-btn {
+  flex: 0 0 auto;
+  min-width: 98px;
+  white-space: nowrap;
 }
 
 .settings-grid {

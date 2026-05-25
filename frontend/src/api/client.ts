@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Order, Patient, PatientForm, ScanResult } from '../types'
+import type { AppSettings, Order, Patient, PatientForm, PointCloudResult, ScanResult } from '../types'
 
 const api = axios.create({
   baseURL: '/api',
@@ -60,6 +60,22 @@ export async function openOrderFolder(id: number) {
   return data
 }
 
+export async function reconstructOrder(id: number, options: { columns?: number; rows?: number } = {}) {
+  const { data } = await api.post<PointCloudResult>(`/orders/${id}/reconstruct`, {
+    columns: options.columns ?? 96,
+    rows: options.rows ?? 72
+  })
+  return data
+}
+
+export function pointCloudFileUrl(path: string) {
+  return `/api/pointcloud/file?path=${encodeURIComponent(path)}`
+}
+
+export function imageFileUrl(path: string) {
+  return `/api/files/image?path=${encodeURIComponent(path)}`
+}
+
 export async function startCamera() {
   await api.post('/camera/start')
 }
@@ -78,12 +94,37 @@ export async function fetchScans(patientId: number) {
   return data.items
 }
 
-export async function packageData(patientId: number) {
-  const { data } = await api.post<{ ok: boolean; message: string }>('/export/package', { patientId })
+export async function packageData(patientId: number, orderId?: number) {
+  const { data } = await api.post<{ ok: boolean; message: string; path: string }>('/export/package', { patientId, orderId })
   return data
 }
 
 export async function uploadData(patientId: number) {
   const { data } = await api.post<{ ok: boolean; message: string }>('/export/upload', { patientId })
+  return data
+}
+
+export async function fetchSettings() {
+  const { data } = await api.get<AppSettings>('/settings')
+  return data
+}
+
+export async function saveSettings(settings: Pick<AppSettings, 'dataRoot'>) {
+  const { data } = await api.put<AppSettings>('/settings', settings)
+  return data
+}
+
+export async function validateDataRoot(dataRoot: string) {
+  const { data } = await api.post<{ ok: boolean; needsMigration: boolean; message: string; normalizedPath: string }>('/settings/validate-data-root', { dataRoot })
+  return data
+}
+
+export async function openDataRoot() {
+  const { data } = await api.post<{ ok: boolean; path: string }>('/settings/open-data-root')
+  return data
+}
+
+export async function selectDataRoot() {
+  const { data } = await api.post<{ ok: boolean; path: string }>('/settings/select-data-root')
   return data
 }

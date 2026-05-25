@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { Camera, Home, LogOut, Settings } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 const router = useRouter()
+const route = useRoute()
 
 async function takeScreenshot() {
   if (!navigator.mediaDevices?.getDisplayMedia) {
@@ -42,6 +43,13 @@ function logout() {
   ElMessage.success('已退出登录')
   router.push('/login')
 }
+
+function openSettings() {
+  router.push({
+    path: '/settings',
+    query: route.path === '/browse' ? { from: 'browse' } : {}
+  })
+}
 </script>
 
 <template>
@@ -52,7 +60,7 @@ function logout() {
     <button class="toolbar-btn" data-tooltip="返回工作台" aria-label="返回工作台" type="button" @click="router.push('/browse')">
       <Home :size="21" />
     </button>
-    <button class="toolbar-btn" data-tooltip="系统设置" aria-label="系统设置" type="button" @click="router.push('/settings')">
+    <button class="toolbar-btn" data-tooltip="系统设置" aria-label="系统设置" type="button" @click="openSettings">
       <Settings :size="21" />
     </button>
     <button class="toolbar-btn ghost-danger" data-tooltip="退出登录" aria-label="退出登录" type="button" @click="logout">

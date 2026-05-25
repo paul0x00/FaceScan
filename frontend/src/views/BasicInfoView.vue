@@ -82,6 +82,12 @@ function handleGenderChange() {
   }
 }
 
+function preventReadonlyFocus(event: Event) {
+  event.preventDefault()
+  const target = event.target as HTMLElement | null
+  target?.blur()
+}
+
 async function submit() {
   form.name = form.name.trim()
   nameError.value = form.name ? '' : '请输入姓名'
@@ -126,10 +132,10 @@ async function submit() {
       </header>
       <el-form class="basic-form" label-position="top">
         <el-form-item label="患者编号">
-          <el-input :model-value="form.patientNo || '保存后自动生成'" readonly />
+          <el-input class="readonly-control" :model-value="form.patientNo || '保存后自动生成'" readonly tabindex="-1" title="不可编辑" @mousedown.capture="preventReadonlyFocus" @focusin="preventReadonlyFocus" />
         </el-form-item>
         <el-form-item label="订单编号">
-          <el-input :model-value="form.orderNo || '保存后自动生成'" readonly />
+          <el-input class="readonly-control" :model-value="form.orderNo || '保存后自动生成'" readonly tabindex="-1" title="不可编辑" @mousedown.capture="preventReadonlyFocus" @focusin="preventReadonlyFocus" />
         </el-form-item>
         <el-form-item label="姓名" required :error="nameError">
           <el-input v-model="form.name" placeholder="患者姓名" @input="handleNameInput" />

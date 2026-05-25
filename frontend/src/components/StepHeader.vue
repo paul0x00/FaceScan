@@ -74,10 +74,13 @@ function goStep(key: string) {
     return
   }
   if (key === 'send') {
-    router.push(`/send/${patientId}`)
+    router.push(`/send/${patientId}${orderQuery}`)
     return
   }
-  ElMessage.info('三维处理将在第二阶段接入')
+  if (key === 'process') {
+    router.push(`/pointcloud/${patientId}${orderQuery}`)
+    return
+  }
 }
 
 onMounted(() => {
