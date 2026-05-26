@@ -1,14 +1,27 @@
 #pragma once
 
-#include <atomic>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace facescan {
 
+class ICameraDevice {
+public:
+    virtual ~ICameraDevice();
+
+    virtual void start() = 0;
+    virtual void stop() = 0;
+    virtual bool streaming() const = 0;
+    virtual void setImageRoot(const std::string& imageRoot) = 0;
+    virtual std::string frameSvg(const std::string& view) = 0;
+    virtual std::vector<std::string> capture(const std::string& orderFolder, const std::string& orderName) = 0;
+};
+
 class CameraManager {
 public:
     explicit CameraManager(const std::string& imageRoot);
+    explicit CameraManager(std::unique_ptr<ICameraDevice> device);
 
     void start();
     void stop();
@@ -21,13 +34,7 @@ public:
     std::vector<std::string> capture(const std::string& orderFolder, const std::string& orderName);
 
 private:
-    std::string imageRoot_;
-    std::atomic<bool> streaming_;
-    std::atomic<int> frameIndex_;
-
-    static std::string toString(int value);
-    static std::string cameraLabel(const std::string& view);
-    static int colorHue(const std::string& view);
+    std::unique_ptr<ICameraDevice> device_;
 };
 
 } // namespace facescan

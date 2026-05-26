@@ -35,6 +35,9 @@ npm run dev -- --host 127.0.0.1
 
 - `backend/` 是完整后端工程，包含 CMake、源码、配置示例和运行数据目录。
 - `backend/CMakeLists.txt` 是后端 CMake 入口。
+- `backend/src/main.cpp` 只保留进程入口；HTTP 监听在 `backend/src/server/`，API 编排在 `backend/src/api/`。
+- `backend/src/camera/` 保留相机服务门面和相机设备接口，当前默认设备仍是模拟相机，后续真实 SDK 可作为新的设备实现接入。
+- `backend/src/algorithm/`、`backend/src/database/`、`backend/src/config/`、`backend/src/common/` 分别放点云、数据持久化、配置和通用工具。
 - `backend/config/app.example.json` 是后端配置示例；本地私有配置可写到 `backend/config/app.json`。
 - `backend/data/` 是后端运行数据目录，SQLite 和采图文件都放在这里。
 - `backend/build/` 是后端 CMake 生成目录，`compile_commands.json` 也只保留在这里。

@@ -7,5 +7,14 @@
     "--compile-commands-dir=${workspaceFolder}/backend/build",
     "--query-driver=/usr/bin/c++,/usr/bin/clang++,/opt/homebrew/bin/*"
   ],
-  "cmake.sourceDirectory": "/Users/paul/Project/FaceScan/backend"
+  "cmake.sourceDirectory": "/Users/paul/Project/FaceScan/backend",
+  "python.testing.unittestArgs": [
+    "-v",
+    "-s",
+    "./tests",
+    "-p",
+    "*_test.py"
+  ],
+  "python.testing.pytestEnabled": false,
+  "python.testing.unittestEnabled": true
 }

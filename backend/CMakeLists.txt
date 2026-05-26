@@ -15,26 +15,35 @@ find_package(Boost REQUIRED)
 find_package(SQLite3 REQUIRED)
 find_package(ZLIB REQUIRED)
 
-add_executable(facescan_backend
+add_library(facescan_core STATIC
     src/algorithm/color_point_cloud_sdk.cpp
+    src/api/app.cpp
     src/camera/camera_manager.cpp
     src/common/file_utils.cpp
     src/common/json_utils.cpp
     src/common/time_utils.cpp
     src/config/app_config.cpp
     src/database/database.cpp
-    src/main.cpp
 )
 
-target_include_directories(facescan_backend PRIVATE
+target_include_directories(facescan_core PUBLIC
     src
     ${SQLite3_INCLUDE_DIRS}
 )
 
-target_link_libraries(facescan_backend PRIVATE
+target_link_libraries(facescan_core PUBLIC
     Boost::headers
     SQLite3::SQLite3
     ZLIB::ZLIB
+)
+
+add_executable(facescan_backend
+    src/main.cpp
+    src/server/http_server.cpp
+)
+
+target_link_libraries(facescan_backend PRIVATE
+    facescan_core
 )
 
 if(UNIX)

@@ -21,7 +21,7 @@ cd frontend && npm run build
 cd frontend && npm run preview
 ```
 
-There are currently no test scripts or test files in the repository. Use `npm run build` for frontend type-checking plus production build, and `cmake --build backend/build` for backend compile verification.
+There are currently no test scripts or test files in the repository. Use `npm run build` for frontend type-checking plus production build, and `cmake --build backend/build` for backend compile verification. The backend is split into a `facescan_core` static library plus the `facescan_backend` executable, so future tests should link `facescan_core` rather than the process entrypoint.
 
 ## Runtime configuration and generated data
 
@@ -37,10 +37,10 @@ FaceScan is a first-phase MVP for a local face-scan workstation. The app has a C
 
 ### Backend
 
-- The backend is implemented in `backend/src/main.cpp` and built as `facescan_backend` by CMake.
+- The backend core is built as the `facescan_core` static library. `backend/src/main.cpp` is only the process entrypoint, `backend/src/server/` owns Boost.Beast/Asio HTTP listening, and `backend/src/api/App` owns API request routing and response generation.
 - It uses Boost.Beast/Asio for HTTP, SQLite for local persistence, and a thread-per-connection accept loop.
 - `Database` owns schema creation, lightweight migrations, seeding, and all patient/order/scan queries. Tables are `patient`, `orders`, and `scan_result`.
-- `CameraManager` is currently a mock camera implementation. Preview frames are generated SVGs, and capture writes four SVG images for `left`, `front`, `right`, and `bottom` views into the configured image root.
+- `CameraManager` is a camera service facade over `ICameraDevice`. The default device is currently a mock implementation; preview frames are generated SVGs, and capture writes four SVG images for `left`, `front`, `right`, and `bottom` views into the configured image root.
 - `App::handle` manually routes REST-style endpoints for login, health, patients, orders, camera start/stop/frame/capture, and export package/upload placeholders.
 - JSON request parsing and response generation are handwritten helpers, not a JSON library.
 
