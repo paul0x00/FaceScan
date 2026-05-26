@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 
 project(FaceScanBackend LANGUAGES CXX)
 
+include(CTest)
+
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW)
 endif()
@@ -48,4 +50,37 @@ target_link_libraries(facescan_backend PRIVATE
 
 if(UNIX)
     target_link_libraries(facescan_backend PRIVATE pthread)
+endif()
+
+if(BUILD_TESTING)
+    include(FetchContent)
+
+    FetchContent_Declare(
+        googletest
+        URL https://github.com/google/googletest/archive/refs/tags/release-1.12.1.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+
+    add_executable(facescan_tests
+        tests/app_test.cpp
+        tests/camera_manager_test.cpp
+        tests/database_test.cpp
+        tests/json_utils_test.cpp
+    )
+
+    target_include_directories(facescan_tests BEFORE PRIVATE
+        ${googletest_SOURCE_DIR}/googletest/include
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+
+    target_link_libraries(facescan_tests PRIVATE
+        facescan_core
+        GTest::gtest_main
+    )
+
+    include(GoogleTest)
+    gtest_discover_tests(facescan_tests)
 endif()

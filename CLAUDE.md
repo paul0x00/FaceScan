@@ -12,6 +12,14 @@ cmake --build backend/build
 ./backend/build/facescan_backend 8080
 ```
 
+Backend tests:
+
+```bash
+cmake -S backend -B backend/build
+cmake --build backend/build
+ctest --test-dir backend/build --output-on-failure
+```
+
 Frontend install, develop, and build:
 
 ```bash
@@ -21,7 +29,7 @@ cd frontend && npm run build
 cd frontend && npm run preview
 ```
 
-There are currently no test scripts or test files in the repository. Use `npm run build` for frontend type-checking plus production build, and `cmake --build backend/build` for backend compile verification. The backend is split into a `facescan_core` static library plus the `facescan_backend` executable, so future tests should link `facescan_core` rather than the process entrypoint.
+Backend tests use GoogleTest through CMake FetchContent. The backend is split into a `facescan_core` static library plus the `facescan_backend` executable, so future tests should link `facescan_core` rather than the process entrypoint. Use `npm run build` for frontend type-checking plus production build.
 
 ## Runtime configuration and generated data
 
