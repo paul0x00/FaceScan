@@ -458,7 +458,7 @@ bool parsePatientFolder(const DirectoryEntry& entry, DataRootPatient* patient)
 
 bool imageExtension(const std::string& ext)
 {
-    return ext == "svg" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif";
+    return ext == "svg" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "ppm";
 }
 
 DataRootOrder scanOrderDirectory(const DirectoryEntry& entry)
@@ -712,6 +712,7 @@ std::string contentTypeForImagePath(const std::string& path)
     if (ext == "png") return "image/png";
     if (ext == "jpg" || ext == "jpeg") return "image/jpeg";
     if (ext == "gif") return "image/gif";
+    if (ext == "ppm") return "image/x-portable-pixmap";
     return "application/octet-stream";
 }
 
@@ -851,7 +852,7 @@ class App::Impl {
 public:
     explicit Impl(const AppConfig& config)
         : database_(config.databasePath),
-          camera_(config.imageRoot),
+          camera_(config.imageRoot, config.cameraMode),
           imageRoot_(CameraManager::normalizeRoot(config.imageRoot)),
           config_(config),
           backendRoot_(backendRootFromConfigPath(config.configPath))
@@ -994,7 +995,8 @@ public:
             if (req.method() == http::verb::get && path == "/api/camera/frame") {
                 std::map<std::string, std::string> query = parseQuery(target);
                 const std::string view = query.count("view") ? query["view"] : "front";
-                return svgResponse(req, camera_.frameSvg(view));
+                const CameraImage image = camera_.frameImage(view);
+                return textResponse(req, http::status::ok, image.body, image.contentType);
             }
             if (req.method() == http::verb::get && path == "/api/pointcloud/file") {
                 return pointCloudFile(req, target);
@@ -1343,7 +1345,7 @@ private:
         const std::string path = query.count("path") ? query["path"] : "";
         const bool underRoot = path.find(imageRoot_ + "/") == 0;
         const std::string ext = extensionLower(path);
-        const bool isImage = ext == "svg" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif";
+        const bool isImage = ext == "svg" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "ppm";
         if (path.empty() || !underRoot || !isImage || path.find("..") != std::string::npos) {
             return jsonResponse(req, "{\"error\":\"invalid image path\"}", http::status::bad_request);
         }

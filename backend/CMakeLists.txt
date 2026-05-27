@@ -17,6 +17,17 @@ find_package(Boost REQUIRED)
 find_package(SQLite3 REQUIRED)
 find_package(ZLIB REQUIRED)
 
+set(ORBBEC_SDK_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/include")
+file(GLOB ORBBEC_SDK_LIBS "${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/lib/libOrbbecSDK*")
+list(SORT ORBBEC_SDK_LIBS)
+if(EXISTS "${ORBBEC_SDK_INCLUDE_DIR}/libobsensor/ObSensor.hpp" AND ORBBEC_SDK_LIBS)
+    list(GET ORBBEC_SDK_LIBS 0 ORBBEC_SDK_LIB)
+    message(STATUS "Orbbec SDK found: ${ORBBEC_SDK_LIB}")
+else()
+    set(ORBBEC_SDK_LIB "")
+    message(STATUS "Orbbec SDK not found; hardware camera mode will be unavailable")
+endif()
+
 add_library(facescan_core STATIC
     src/algorithm/color_point_cloud_sdk.cpp
     src/api/app.cpp
@@ -38,6 +49,15 @@ target_link_libraries(facescan_core PUBLIC
     SQLite3::SQLite3
     ZLIB::ZLIB
 )
+
+if(ORBBEC_SDK_LIB)
+    target_compile_definitions(facescan_core PUBLIC FACESCAN_WITH_ORBBEC)
+    target_include_directories(facescan_core PRIVATE "${ORBBEC_SDK_INCLUDE_DIR}")
+    target_link_libraries(facescan_core PUBLIC "${ORBBEC_SDK_LIB}")
+    set_target_properties(facescan_core PROPERTIES
+        BUILD_RPATH "${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/lib"
+    )
+endif()
 
 add_executable(facescan_backend
     src/main.cpp

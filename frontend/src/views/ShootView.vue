@@ -25,12 +25,17 @@ const cameras = [
   { view: 'bottom', label: '下方相机图像' }
 ]
 
-function frameUrl(view: string) {
-  return `/api/camera/frame?view=${view}&t=${frameTick.value}`
+function frameUrl() {
+  return `/api/camera/frame?t=${frameTick.value}`
 }
 
 onMounted(async () => {
-  await startCamera()
+  try {
+    await startCamera()
+  } catch (error) {
+    running.value = false
+    ElMessage.error(error instanceof Error ? error.message : '相机启动失败')
+  }
   if (routeOrderId.value) {
     orderId.value = routeOrderId.value
   } else {
@@ -47,7 +52,7 @@ onMounted(async () => {
     if (running.value) {
       frameTick.value = Date.now()
     }
-  }, 250)
+  }, 100)
 })
 
 onBeforeUnmount(async () => {
@@ -104,9 +109,9 @@ async function shoot() {
             class="camera-panel"
             :class="camera.view"
           >
-            <img :src="frameUrl(camera.view)" :alt="camera.label" />
+            <img :src="frameUrl()" :alt="camera.label" />
             <span class="camera-name">{{ camera.label }}</span>
-            <span class="camera-badge">{{ running ? '模拟预览' : '已暂停' }}</span>
+            <span class="camera-badge">{{ running ? '实时彩色流' : '已暂停' }}</span>
           </div>
         </div>
         <aside class="control-panel">

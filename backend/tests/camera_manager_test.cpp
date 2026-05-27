@@ -17,10 +17,11 @@ TEST(CameraManagerTest, TracksStreamingStateAndReturnsPreviewFrame)
     camera.start();
     EXPECT_TRUE(camera.streaming());
 
-    const std::string frame = camera.frameSvg("front");
-    EXPECT_NE(std::string::npos, frame.find("<svg"));
-    EXPECT_NE(std::string::npos, frame.find("正面相机图像"));
-    EXPECT_NE(std::string::npos, frame.find("实时预览"));
+    const CameraImage frame = camera.frameImage("front");
+    EXPECT_EQ("image/svg+xml; charset=utf-8", frame.contentType);
+    EXPECT_NE(std::string::npos, frame.body.find("<svg"));
+    EXPECT_NE(std::string::npos, frame.body.find("正面相机图像"));
+    EXPECT_NE(std::string::npos, frame.body.find("实时预览"));
 
     camera.stop();
     EXPECT_FALSE(camera.streaming());

@@ -3,7 +3,7 @@ import type { AppSettings, Order, Patient, PatientForm, PointCloudResult, ScanRe
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 8000
+  timeout: 60000
 })
 
 api.interceptors.request.use((config) => {
