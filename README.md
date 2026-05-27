@@ -16,7 +16,7 @@
 后端：
 
 ```bash
-cmake -S backend -B backend/build
+cmake -S backend -B backend/build -G Ninja
 cmake --build backend/build
 ./backend/build/facescan_backend 8080
 ```
@@ -24,7 +24,7 @@ cmake --build backend/build
 后端测试：
 
 ```bash
-cmake -S backend -B backend/build
+cmake -S backend -B backend/build -G Ninja
 cmake --build backend/build
 ctest --test-dir backend/build --output-on-failure
 ```

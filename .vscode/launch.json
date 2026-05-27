@@ -1,0 +1,48 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "CodeLLDB: facescan_backend",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/backend/build/facescan_backend",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "8080"
+      ],
+      "preLaunchTask": "CMake: build backend (Debug)",
+      "stopOnEntry": false,
+      "env": {
+        "DYLD_LIBRARY_PATH": "/opt/homebrew/lib:/usr/local/lib",
+        "LD_LIBRARY_PATH": "/opt/homebrew/lib:/usr/local/lib"
+      },
+      "sourceLanguages": [
+        "cpp"
+      ]
+    },
+    {
+      "name": "C/C++: facescan_backend (LLDB)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/backend/build/facescan_backend",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "8080"
+      ],
+      "preLaunchTask": "CMake: build backend (Debug)",
+      "stopAtEntry": false,
+      "MIMode": "lldb",
+      "environment": [
+        {
+          "name": "DYLD_LIBRARY_PATH",
+          "value": "/opt/homebrew/lib:/usr/local/lib"
+        },
+        {
+          "name": "LD_LIBRARY_PATH",
+          "value": "/opt/homebrew/lib:/usr/local/lib"
+        }
+      ],
+      "externalConsole": false
+    }
+  ]
+}

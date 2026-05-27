@@ -1,6 +1,6 @@
-#include "server/http_server.hpp"
+#include "http_server.hpp"
 
-#include "api/app.hpp"
+#include "../api/app.hpp"
 #include "config/app_config.hpp"
 
 #include <boost/asio.hpp>

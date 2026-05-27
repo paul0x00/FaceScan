@@ -1,0 +1,56 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "CMake: configure backend (Debug)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "-S",
+        "${workspaceFolder}/backend",
+        "-B",
+        "${workspaceFolder}/backend/build",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=Debug",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "/opt/homebrew/bin:/usr/local/bin:${env:PATH}",
+          "CMAKE_PREFIX_PATH": "/opt/homebrew;/usr/local"
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "CMake: build backend (Debug)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "${workspaceFolder}/backend/build",
+        "--target",
+        "facescan_backend"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "/opt/homebrew/bin:/usr/local/bin:${env:PATH}",
+          "CMAKE_PREFIX_PATH": "/opt/homebrew;/usr/local"
+        }
+      },
+      "dependsOn": [
+        "CMake: configure backend (Debug)"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
+    }
+  ]
+}
