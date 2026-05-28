@@ -12,17 +12,28 @@ import type { ScanResult } from '../types'
 const route = useRoute()
 const router = useRouter()
 const store = usePatientStore()
+/** 当前交付患者主键。 */
 const patientId = computed(() => Number(route.params.id))
+/** 路由指定的订单主键。 */
 const routeOrderId = computed(() => Number(route.query.orderId || 0))
+/** 患者扫描记录集合。 */
 const scans = ref<ScanResult[]>([])
+/** 本地打包进行中状态。 */
 const packing = ref(false)
+/** 云端上传占位接口进行中状态。 */
 const uploading = ref(false)
+/** 当前患者资料。 */
 const patient = computed(() => store.patients.find((item) => item.id === patientId.value))
+/** 用于交付操作的最近订单主键。 */
 const latestOrderId = computed(() => routeOrderId.value || scans.value.find((item) => item.orderId)?.orderId || 0)
+/** 已保存图像数量统计。 */
 const imageCount = computed(() => scans.value.reduce((sum, item) => sum + (item.imagePaths?.length || (item.plyPath ? 0 : 1)), 0))
+/** 已生成点云的扫描记录。 */
 const pointClouds = computed(() => scans.value.filter((item) => item.plyPath))
+/** 当前订单最近的 PLY 路径。 */
 const latestPlyPath = computed(() => pointClouds.value.find((item) => !latestOrderId.value || item.orderId === latestOrderId.value)?.plyPath || '')
 
+/** 加载患者和扫描记录。 */
 onMounted(async () => {
   if (!store.patients.length) {
     await store.load()
@@ -30,6 +41,7 @@ onMounted(async () => {
   scans.value = await fetchScans(patientId.value)
 })
 
+/** 打包当前订单交付数据。 */
 async function pack() {
   packing.value = true
   try {
@@ -40,6 +52,7 @@ async function pack() {
   }
 }
 
+/** 调用 MVP 云端上传占位接口。 */
 async function upload() {
   uploading.value = true
   try {
@@ -50,6 +63,7 @@ async function upload() {
   }
 }
 
+/** 请求后端打开当前订单目录。 */
 async function openFolder() {
   if (!latestOrderId.value) return
   const result = await openOrderFolder(latestOrderId.value)
@@ -58,6 +72,7 @@ async function openFolder() {
   }
 }
 
+/** 阻止只读字段聚焦，保持只读展示的交互一致性。 */
 function preventReadonlyFocus(event: Event) {
   event.preventDefault()
   const target = event.target as HTMLElement | null

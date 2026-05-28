@@ -7,6 +7,7 @@
 
 using namespace facescan;
 
+/// 验证相机预览状态切换和模拟预览图输出。
 TEST(CameraManagerTest, TracksStreamingStateAndReturnsPreviewFrame)
 {
     facescan_test::ScopedTempDir temp("camera_preview");
@@ -27,6 +28,7 @@ TEST(CameraManagerTest, TracksStreamingStateAndReturnsPreviewFrame)
     EXPECT_FALSE(camera.streaming());
 }
 
+/// 验证同步采集会写出四个视角的图像文件。
 TEST(CameraManagerTest, CaptureWritesFourViewFiles)
 {
     facescan_test::ScopedTempDir temp("camera_capture");

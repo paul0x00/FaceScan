@@ -1,4 +1,4 @@
-#include "common/file_utils.hpp"
+#include "file_utils.hpp"
 
 #include <cctype>
 #include <cerrno>
@@ -21,6 +21,7 @@ namespace facescan {
 
 namespace {
 
+/// 创建单级目录，跨平台兼容“已存在”场景。
 bool makeDirectory(const std::string& path)
 {
     if (path.empty()) {
@@ -38,6 +39,7 @@ bool makeDirectory(const std::string& path)
     return false;
 }
 
+/// 将路径安全包装为系统 shell 命令参数。
 std::string shellQuote(const std::string& path)
 {
 #if defined(_WIN32)
@@ -67,6 +69,7 @@ std::string shellQuote(const std::string& path)
 
 } // namespace
 
+/// 递归创建目录。
 void ensureDirectory(const std::string& path)
 {
     std::string current;
@@ -81,6 +84,7 @@ void ensureDirectory(const std::string& path)
     }
 }
 
+/// 返回父目录路径。
 std::string parentDirectory(const std::string& path)
 {
     const std::size_t pos = path.find_last_of("/\\");
@@ -90,6 +94,7 @@ std::string parentDirectory(const std::string& path)
     return path.substr(0, pos);
 }
 
+/// 判断路径是否为绝对路径。
 bool isAbsolutePath(const std::string& path)
 {
     if (path.empty()) {
@@ -102,6 +107,7 @@ bool isAbsolutePath(const std::string& path)
 #endif
 }
 
+/// 拼接 base 和相对路径。
 std::string joinPath(const std::string& base, const std::string& path)
 {
     if (path.empty() || isAbsolutePath(path) || base.empty() || base == ".") {
@@ -114,6 +120,7 @@ std::string joinPath(const std::string& base, const std::string& path)
     return base + "/" + path;
 }
 
+/// 从 config/app.json 推导 backend 根目录。
 std::string backendRootFromConfigPath(const std::string& configPath)
 {
     const std::string configDir = parentDirectory(configPath);
@@ -121,6 +128,7 @@ std::string backendRootFromConfigPath(const std::string& configPath)
     return root.empty() ? "." : root;
 }
 
+/// 读取完整文本文件。
 std::string readFileText(const std::string& path)
 {
     std::ifstream file(path.c_str(), std::ios::binary);
@@ -132,6 +140,7 @@ std::string readFileText(const std::string& path)
     return os.str();
 }
 
+/// 调用系统文件管理器打开目录。
 bool openDirectory(const std::string& path)
 {
     if (path.empty()) {
@@ -147,6 +156,7 @@ bool openDirectory(const std::string& path)
     return std::system(command.c_str()) == 0;
 }
 
+/// 判断路径是否存在。
 bool pathExists(const std::string& path)
 {
     if (path.empty()) {
@@ -161,6 +171,7 @@ bool pathExists(const std::string& path)
 #endif
 }
 
+/// 递归复制文件或目录。
 bool copyPathRecursive(const std::string& from, const std::string& to)
 {
     if (from.empty() || to.empty() || from == to) {
@@ -214,6 +225,7 @@ bool copyPathRecursive(const std::string& from, const std::string& to)
 #endif
 }
 
+/// 移动文件或目录；跨卷移动时退化为复制后删除。
 bool movePathRecursive(const std::string& from, const std::string& to)
 {
     if (from.empty() || to.empty() || from == to || !pathExists(from)) {
@@ -229,6 +241,7 @@ bool movePathRecursive(const std::string& from, const std::string& to)
     return removePathRecursive(from);
 }
 
+/// 递归删除文件或目录。
 bool removePathRecursive(const std::string& path)
 {
     if (path.empty() || path == "/" || path == "." || path == "..") {
@@ -270,6 +283,7 @@ bool removePathRecursive(const std::string& path)
 #endif
 }
 
+/// 打开平台目录选择器。
 std::string chooseDirectory()
 {
 #if defined(_WIN32)

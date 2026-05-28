@@ -7,72 +7,117 @@
 
 namespace facescan {
 
+/// 可直接返回给 HTTP 客户端的相机预览图。
 struct CameraImage {
+    /// 图片二进制或文本内容。
     std::string body;
+    /// HTTP Content-Type。
     std::string contentType;
 
+    /// 构造空 SVG 预览图容器。
     CameraImage() : contentType("image/svg+xml; charset=utf-8") {}
+    /// 使用指定内容和 MIME 类型构造预览图。
     CameraImage(const std::string& imageBody, const std::string& imageContentType)
         : body(imageBody), contentType(imageContentType)
     {
     }
 };
 
+/// 单路相机帧数据，既可承载 RGB，也可承载红外灰度帧。
 struct CameraFrameData {
+    /// 流名称，如 color、leftIr、rightIr。
     std::string stream;
+    /// SDK 或文件格式名。
     std::string format;
+    /// 帧宽度，单位像素。
     uint32_t width;
+    /// 帧高度，单位像素。
     uint32_t height;
+    /// 设备帧序号。
     uint64_t frameIndex;
+    /// 采集时间文本。
     std::string capturedAt;
+    /// 原始帧字节。
     std::vector<unsigned char> data;
 
+    /// 初始化为空帧。
     CameraFrameData() : width(0), height(0), frameIndex(0) {}
+    /// 判断帧是否包含可写入的数据。
     bool valid() const { return width > 0 && height > 0 && !data.empty(); }
 };
 
+/// 一次同步采集中保存的彩色和红外帧集合。
 struct SynchronizedCaptureFrames {
+    /// 彩色帧。
     CameraFrameData color;
+    /// 左红外帧。
     CameraFrameData leftIr;
+    /// 右红外帧。
     CameraFrameData rightIr;
+    /// 彩色帧保存路径。
     std::string colorPath;
+    /// 左红外帧保存路径。
     std::string leftIrPath;
+    /// 右红外帧保存路径。
     std::string rightIrPath;
+    /// 同步采集清单路径。
     std::string manifestPath;
+    /// 用于后续流程展示和点云重建的纹理图路径。
     std::vector<std::string> texturePaths;
 
+    /// 同步采集是否拿到了三路必要帧。
     bool complete() const { return color.valid() && leftIr.valid() && rightIr.valid(); }
 };
 
+/// 相机设备抽象接口，屏蔽模拟设备和真实 Orbbec 设备差异。
 class ICameraDevice {
 public:
+    /// 释放设备资源。
     virtual ~ICameraDevice();
 
+    /// 开启预览流。
     virtual void start() = 0;
+    /// 停止预览流。
     virtual void stop() = 0;
+    /// 返回当前预览流是否运行。
     virtual bool streaming() const = 0;
+    /// 更新图片保存根目录。
     virtual void setImageRoot(const std::string& imageRoot) = 0;
+    /// 生成指定视角的预览图。
     virtual CameraImage frameImage(const std::string& view) = 0;
+    /// 同步采集并将订单图像写入指定目录。
     virtual std::vector<std::string> capture(const std::string& orderFolder, const std::string& orderName) = 0;
 };
 
+/// 相机服务门面，向 API 层提供稳定的预览和采集能力。
 class CameraManager {
 public:
+    /// 使用模拟相机创建管理器。
     explicit CameraManager(const std::string& imageRoot);
+    /// 按配置选择模拟相机或真实设备。
     CameraManager(const std::string& imageRoot, const std::string& cameraMode);
+    /// 注入自定义设备实现，主要用于测试。
     explicit CameraManager(std::unique_ptr<ICameraDevice> device);
 
+    /// 开启预览。
     void start();
+    /// 停止预览。
     void stop();
+    /// 查询预览是否运行。
     bool streaming() const;
+    /// 更新图片保存根目录。
     void setImageRoot(const std::string& imageRoot);
 
+    /// 规范化图片根目录，去掉末尾分隔符并提供默认值。
     static std::string normalizeRoot(const std::string& path);
 
+    /// 获取指定视角的预览图。
     CameraImage frameImage(const std::string& view);
+    /// 同步采集订单图像并返回写入路径。
     std::vector<std::string> capture(const std::string& orderFolder, const std::string& orderName);
 
 private:
+    /// 当前启用的相机设备实现。
     std::unique_ptr<ICameraDevice> device_;
 };
 

@@ -8,6 +8,7 @@
 using namespace facescan;
 namespace http = boost::beast::http;
 
+/// 验证健康检查接口返回 ok。
 TEST(AppTest, HealthEndpointReturnsOk)
 {
     facescan_test::ScopedTempDir temp("app_health");
@@ -27,6 +28,7 @@ TEST(AppTest, HealthEndpointReturnsOk)
     EXPECT_EQ("application/json; charset=utf-8", res[http::field::content_type]);
 }
 
+/// 验证未知接口返回 404。
 TEST(AppTest, UnknownEndpointReturnsNotFound)
 {
     facescan_test::ScopedTempDir temp("app_not_found");

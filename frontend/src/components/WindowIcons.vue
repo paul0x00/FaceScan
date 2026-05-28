@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 const router = useRouter()
 const route = useRoute()
 
+/** 通过浏览器屏幕捕获 API 截取当前页面并下载为 PNG。 */
 async function takeScreenshot() {
   if (!navigator.mediaDevices?.getDisplayMedia) {
     ElMessage.warning('当前浏览器不支持网页截图，请使用系统截图工具')
@@ -38,12 +39,14 @@ async function takeScreenshot() {
   }
 }
 
+/** 清除本地 token 并返回登录页。 */
 function logout() {
   localStorage.removeItem('facescan.token')
   ElMessage.success('已退出登录')
   router.push('/login')
 }
 
+/** 打开设置页；从首页进入时允许编辑数据目录。 */
 function openSettings() {
   router.push({
     path: '/settings',

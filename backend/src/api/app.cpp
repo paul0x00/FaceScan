@@ -1,11 +1,11 @@
 #include "app.hpp"
 
-#include "algorithm/color_point_cloud_sdk.hpp"
-#include "camera/camera_manager.hpp"
-#include "common/file_utils.hpp"
-#include "common/json_utils.hpp"
-#include "common/models.hpp"
-#include "common/time_utils.hpp"
+#include "../algorithm/color_point_cloud_sdk.hpp"
+#include "../camera/camera_manager.hpp"
+#include "../common/file_utils.hpp"
+#include "../common/json_utils.hpp"
+#include "../common/models.hpp"
+#include "../common/time_utils.hpp"
 #include "database/database.hpp"
 
 #include <boost/asio.hpp>
@@ -49,6 +49,7 @@ namespace facescan {
 
 namespace {
 
+/// 将整数转换为字符串，避免重复创建格式化代码。
 std::string toString(int value)
 {
     std::ostringstream os;
@@ -56,6 +57,7 @@ std::string toString(int value)
     return os.str();
 }
 
+/// 将浮点数转换为 JSON number 文本。
 std::string toJsonNumber(double value)
 {
     std::ostringstream os;
@@ -63,6 +65,7 @@ std::string toJsonNumber(double value)
     return os.str();
 }
 
+/// 将业务编号和姓名净化为可安全用于目录名的片段。
 std::string safePathSegment(const std::string& value)
 {
     std::string out;
@@ -81,27 +84,32 @@ std::string safePathSegment(const std::string& value)
     return out.empty() ? "unnamed" : out;
 }
 
+/// 生成当前患者目录名：患者编号-姓名。
 std::string patientFolderName(const Patient& patient)
 {
     const std::string patientNo = patient.patientNo.empty() ? ("patient_" + toString(patient.id)) : patient.patientNo;
     return safePathSegment(patientNo + "-" + patient.name);
 }
 
+/// 生成旧版本患者目录名，兼容历史数据迁移。
 std::string legacyPatientFolderName(const Patient& patient)
 {
     return safePathSegment(toString(patient.id) + "_" + patient.name);
 }
 
+/// 拼接患者数据目录。
 std::string patientDirectory(const std::string& imageRoot, const Patient& patient)
 {
     return imageRoot + "/" + patientFolderName(patient);
 }
 
+/// 拼接旧版本患者数据目录。
 std::string legacyPatientDirectory(const std::string& imageRoot, const Patient& patient)
 {
     return imageRoot + "/" + legacyPatientFolderName(patient);
 }
 
+/// 在新旧目录命名之间选择当前实际存在的目录。
 std::string existingPatientDirectory(const std::string& imageRoot, const Patient& patient)
 {
     const std::string current = patientDirectory(imageRoot, patient);
@@ -115,26 +123,31 @@ std::string existingPatientDirectory(const std::string& imageRoot, const Patient
     return current;
 }
 
+/// 生成订单目录名。
 std::string orderFolderName(const std::string& orderNo)
 {
     return safePathSegment(orderNo.empty() ? "order" : orderNo);
 }
 
+/// 拼接订单数据目录。
 std::string orderDirectory(const std::string& imageRoot, const Patient& patient, const std::string& orderNo)
 {
     return patientDirectory(imageRoot, patient) + "/" + orderFolderName(orderNo);
 }
 
+/// 判断 child 是否位于 parent 目录之下。
 bool isNestedPath(const std::string& parent, const std::string& child)
 {
     return !parent.empty() && child.size() > parent.size() && child.find(parent + "/") == 0;
 }
 
+/// 判断两个路径是否相同或存在父子目录关系。
 bool sameOrNestedPath(const std::string& parent, const std::string& child)
 {
     return parent == child || isNestedPath(parent, child);
 }
 
+/// 去除路径末尾多余斜杠，保留根目录斜杠。
 std::string stripTrailingSlashes(const std::string& value)
 {
     std::string out = value;
@@ -144,6 +157,7 @@ std::string stripTrailingSlashes(const std::string& value)
     return out;
 }
 
+/// 获取当前工作目录，用于相对路径比较。
 std::string currentWorkingDirectory()
 {
     char buffer[4096];
@@ -159,6 +173,7 @@ std::string currentWorkingDirectory()
     return ".";
 }
 
+/// 将路径转换为可比较的规范文本。
 std::string comparablePath(const std::string& path)
 {
     if (path.empty()) {
@@ -171,6 +186,7 @@ std::string comparablePath(const std::string& path)
     return stripTrailingSlashes(joinPath(currentWorkingDirectory(), normalized));
 }
 
+/// 检测路径是否包含上级目录跳转片段。
 bool hasParentTraversal(const std::string& path)
 {
     std::string token;
@@ -188,6 +204,7 @@ bool hasParentTraversal(const std::string& path)
     return false;
 }
 
+/// 将字符串集合序列化为 JSON 数组。
 std::string jsonStringArray(const std::vector<std::string>& values)
 {
     std::ostringstream os;
@@ -202,6 +219,7 @@ std::string jsonStringArray(const std::vector<std::string>& values)
     return os.str();
 }
 
+/// 将患者模型序列化为 API 响应 JSON。
 std::string patientJson(const Patient& p)
 {
     std::ostringstream os;
@@ -220,6 +238,7 @@ std::string patientJson(const Patient& p)
     return os.str();
 }
 
+/// 将订单摘要序列化为 API 响应 JSON。
 std::string orderJson(const Order& order)
 {
     std::ostringstream os;
@@ -236,6 +255,7 @@ std::string orderJson(const Order& order)
     return os.str();
 }
 
+/// 将点云构建结果序列化为 API 响应 JSON。
 std::string pointCloudJson(int orderId, const PointCloudBuildResult& result, const std::string& previewPath)
 {
     std::ostringstream os;
@@ -255,6 +275,7 @@ std::string pointCloudJson(int orderId, const PointCloudBuildResult& result, con
     return os.str();
 }
 
+/// 从简单 JSON 请求体提取患者表单。
 Patient patientFromBody(const std::string& body)
 {
     Patient p;
@@ -274,6 +295,7 @@ Patient patientFromBody(const std::string& body)
     return p;
 }
 
+/// 用于生成点云 SVG 预览的中间点结构。
 struct PlyPreviewPoint {
     double x;
     double y;
@@ -286,12 +308,14 @@ struct PlyPreviewPoint {
     int b;
 };
 
+/// 提取路径中的文件名。
 std::string fileNameOnly(const std::string& path)
 {
     const std::size_t pos = path.find_last_of("/\\");
     return pos == std::string::npos ? path : path.substr(pos + 1);
 }
 
+/// 判断目录名前缀是否符合患者编号格式。
 bool looksLikePatientNo(const std::string& value)
 {
     if (value.size() < 2 || (value[0] != 'P' && value[0] != 'p')) {
@@ -305,6 +329,7 @@ bool looksLikePatientNo(const std::string& value)
     return true;
 }
 
+/// 提取并小写化文件扩展名。
 std::string extensionLower(const std::string& path)
 {
     const std::size_t pos = path.find_last_of('.');
@@ -315,12 +340,14 @@ std::string extensionLower(const std::string& path)
     return ext;
 }
 
+/// 去除文件扩展名。
 std::string removeExtension(const std::string& name)
 {
     const std::size_t pos = name.find_last_of('.');
     return pos == std::string::npos ? name : name.substr(0, pos);
 }
 
+/// 根据 PLY 路径查找已生成的点云 SVG 预览图。
 std::string pointCloudPreviewPathForPly(const std::string& plyPath)
 {
     if (plyPath.empty()) {
@@ -335,6 +362,7 @@ std::string pointCloudPreviewPathForPly(const std::string& plyPath)
     return pathExists(previewPath) ? previewPath : "";
 }
 
+/// 跨平台目录枚举结果。
 struct DirectoryEntry {
     std::string name;
     std::string path;
@@ -342,11 +370,13 @@ struct DirectoryEntry {
     std::time_t modified;
 };
 
+/// 判断文件名是否应在业务扫描中隐藏。
 bool hiddenName(const std::string& name)
 {
     return name.empty() || name[0] == '.';
 }
 
+/// 将文件时间转换为项目统一的时间文本。
 std::string formatTime(std::time_t value)
 {
     if (value <= 0) {
@@ -363,6 +393,7 @@ std::string formatTime(std::time_t value)
     return os.str();
 }
 
+/// 从患者或订单编号中解析时间；解析失败时使用文件修改时间兜底。
 std::string createdAtFromCode(const std::string& value, std::time_t fallback)
 {
     std::size_t start = 0;
@@ -385,6 +416,7 @@ std::string createdAtFromCode(const std::string& value, std::time_t fallback)
     return formatTime(fallback);
 }
 
+/// 枚举目录下的文件和子目录并按名称排序。
 std::vector<DirectoryEntry> listDirectoryEntries(const std::string& path)
 {
     std::vector<DirectoryEntry> entries;
@@ -438,6 +470,7 @@ std::vector<DirectoryEntry> listDirectoryEntries(const std::string& path)
     return entries;
 }
 
+/// 将患者目录名解析为数据根索引模型。
 bool parsePatientFolder(const DirectoryEntry& entry, DataRootPatient* patient)
 {
     if (!patient || !entry.directory || hiddenName(entry.name) || entry.name == "db") {
@@ -456,11 +489,13 @@ bool parsePatientFolder(const DirectoryEntry& entry, DataRootPatient* patient)
     return true;
 }
 
+/// 判断扩展名是否属于可展示或可打包的图像文件。
 bool imageExtension(const std::string& ext)
 {
     return ext == "svg" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "ppm";
 }
 
+/// 扫描订单目录中的图片、PLY 和预览图。
 DataRootOrder scanOrderDirectory(const DirectoryEntry& entry)
 {
     DataRootOrder order;
@@ -494,6 +529,7 @@ DataRootOrder scanOrderDirectory(const DirectoryEntry& entry)
     return order;
 }
 
+/// 扫描数据根目录并生成患者/订单文件索引。
 std::vector<DataRootPatient> scanDataRoot(const std::string& imageRoot)
 {
     std::vector<DataRootPatient> patients;
@@ -515,6 +551,7 @@ std::vector<DataRootPatient> scanDataRoot(const std::string& imageRoot)
     return patients;
 }
 
+/// 将旧数据根目录中的患者目录迁移到新数据根目录。
 bool movePatientDirectories(const std::string& fromRoot, const std::string& toRoot)
 {
     if (fromRoot.empty() || toRoot.empty() || fromRoot == toRoot || !pathExists(fromRoot)) {
@@ -535,6 +572,7 @@ bool movePatientDirectories(const std::string& fromRoot, const std::string& toRo
     return true;
 }
 
+/// 读取文件二进制内容。
 std::vector<unsigned char> readFileBytes(const std::string& path)
 {
     std::ifstream file(path.c_str(), std::ios::binary);
@@ -554,12 +592,14 @@ std::vector<unsigned char> readFileBytes(const std::string& path)
     return bytes;
 }
 
+/// 写出 ZIP 小端 16 位整数。
 void writeUInt16(std::ofstream& out, std::uint16_t value)
 {
     out.put(static_cast<char>(value & 0xff));
     out.put(static_cast<char>((value >> 8) & 0xff));
 }
 
+/// 写出 ZIP 小端 32 位整数。
 void writeUInt32(std::ofstream& out, std::uint32_t value)
 {
     out.put(static_cast<char>(value & 0xff));
@@ -568,6 +608,7 @@ void writeUInt32(std::ofstream& out, std::uint32_t value)
     out.put(static_cast<char>((value >> 24) & 0xff));
 }
 
+/// 计算 ZIP 条目使用的 CRC32。
 std::uint32_t crc32Bytes(const std::vector<unsigned char>& bytes)
 {
     std::uint32_t crc = 0xffffffffu;
@@ -580,6 +621,7 @@ std::uint32_t crc32Bytes(const std::vector<unsigned char>& bytes)
     return crc ^ 0xffffffffu;
 }
 
+/// 使用 zlib 生成 raw deflate 数据。
 bool deflateRaw(const std::vector<unsigned char>& input, std::vector<unsigned char>* output)
 {
     if (!output || input.empty()) {
@@ -614,6 +656,7 @@ bool deflateRaw(const std::vector<unsigned char>& input, std::vector<unsigned ch
     return ok;
 }
 
+/// 写出一个仅包含普通文件的 ZIP 包。
 bool writeZipDeflate(const std::string& zipPath, const std::vector<std::string>& filePaths)
 {
     struct Entry {
@@ -705,6 +748,7 @@ bool writeZipDeflate(const std::string& zipPath, const std::vector<std::string>&
     return true;
 }
 
+/// 根据图像扩展名推断 HTTP Content-Type。
 std::string contentTypeForImagePath(const std::string& path)
 {
     const std::string ext = extensionLower(path);
@@ -716,6 +760,7 @@ std::string contentTypeForImagePath(const std::string& path)
     return "application/octet-stream";
 }
 
+/// 从 ASCII PLY 点云生成轻量 SVG 预览图。
 std::string buildPointCloudPreviewSvg(const std::string& plyPath, const std::string& previewPath)
 {
     std::ifstream in(plyPath.c_str(), std::ios::binary);
@@ -848,8 +893,10 @@ std::string buildPointCloudPreviewSvg(const std::string& plyPath, const std::str
 
 } // namespace
 
+/// API 隐藏实现，集中持有数据库、相机和运行配置。
 class App::Impl {
 public:
+    /// 初始化数据库、相机门面和数据目录配置。
     explicit Impl(const AppConfig& config)
         : database_(config.databasePath),
           camera_(config.imageRoot, config.cameraMode),
@@ -860,6 +907,7 @@ public:
         config_.imageRoot = imageRoot_;
     }
 
+    /// 按 HTTP 方法和路径分发 REST 风格 API 请求。
     http::response<http::string_body> handle(const http::request<http::string_body>& req)
     {
         const std::string target(req.target().data(), req.target().size());
@@ -1020,12 +1068,18 @@ public:
     }
 
 private:
+    /// 本地 SQLite 数据访问对象。
     Database database_;
+    /// 相机服务门面。
     CameraManager camera_;
+    /// 当前患者数据保存根目录。
     std::string imageRoot_;
+    /// 当前运行配置，设置保存时会写回磁盘。
     AppConfig config_;
+    /// backend 工程根目录，用于解析相对路径。
     std::string backendRoot_;
 
+    /// 构造通用文本响应，并统一设置 CORS 和 keep-alive。
     http::response<http::string_body> textResponse(
         const http::request<http::string_body>& req,
         http::status status,
@@ -1044,6 +1098,7 @@ private:
         return res;
     }
 
+    /// 构造 JSON 响应。
     http::response<http::string_body> jsonResponse(
         const http::request<http::string_body>& req,
         const std::string& body,
@@ -1052,16 +1107,19 @@ private:
         return textResponse(req, status, body, "application/json; charset=utf-8");
     }
 
+    /// 构造 SVG 响应。
     http::response<http::string_body> svgResponse(const http::request<http::string_body>& req, const std::string& body)
     {
         return textResponse(req, http::status::ok, body, "image/svg+xml; charset=utf-8");
     }
 
+    /// 构造 PLY 文本响应。
     http::response<http::string_body> plyResponse(const http::request<http::string_body>& req, const std::string& body)
     {
         return textResponse(req, http::status::ok, body, "application/ply; charset=utf-8");
     }
 
+    /// 将二进制文件内容包装为 string_body 响应。
     http::response<http::string_body> binaryFileResponse(
         const http::request<http::string_body>& req,
         const std::vector<unsigned char>& bytes,
@@ -1074,6 +1132,7 @@ private:
         return textResponse(req, http::status::ok, body, contentType);
     }
 
+    /// 返回当前系统设置。
     http::response<http::string_body> settings(const http::request<http::string_body>& req)
     {
         return jsonResponse(req, "{\"dataRoot\":\"" + escapeJson(imageRoot_)
@@ -1082,6 +1141,7 @@ private:
             + "\",\"cameraMode\":\"" + escapeJson(config_.cameraMode) + "\"}");
     }
 
+    /// 规范化用户输入的数据根目录，支持相对 backend 的路径。
     std::string resolveDataRootInput(const std::string& value) const
     {
         std::string trimmed = value;
@@ -1104,6 +1164,7 @@ private:
         return joinPath(backendRoot_, normalized);
     }
 
+    /// 校验数据根目录是否合法并返回错误文案。
     std::string dataRootValidationError(const std::string& dataRoot) const
     {
         if (dataRoot.empty()) {
@@ -1138,6 +1199,7 @@ private:
         return "";
     }
 
+    /// API：仅校验数据根目录，不写配置。
     http::response<http::string_body> validateDataRoot(const http::request<http::string_body>& req)
     {
         const std::string dataRoot = resolveDataRootInput(jsonStringValue(req.body(), "dataRoot"));
@@ -1151,6 +1213,7 @@ private:
             + ",\"message\":\"目录路径可用\",\"normalizedPath\":\"" + escapeJson(dataRoot) + "\"}");
     }
 
+    /// API：更新设置并在必要时迁移患者数据目录。
     http::response<http::string_body> updateSettings(const http::request<http::string_body>& req)
     {
         const std::string dataRoot = resolveDataRootInput(jsonStringValue(req.body(), "dataRoot"));
@@ -1177,6 +1240,7 @@ private:
         return settings(req);
     }
 
+    /// API：在系统文件管理器中打开当前数据根目录。
     http::response<http::string_body> openDataRoot(const http::request<http::string_body>& req)
     {
         ensureDirectory(imageRoot_);
@@ -1185,6 +1249,7 @@ private:
             + ",\"path\":\"" + escapeJson(imageRoot_) + "\"}");
     }
 
+    /// API：打开系统目录选择器并返回选择结果。
     http::response<http::string_body> selectDataRoot(const http::request<http::string_body>& req)
     {
         const std::string path = resolveDataRootInput(chooseDirectory());
@@ -1194,12 +1259,14 @@ private:
         return jsonResponse(req, "{\"ok\":true,\"path\":\"" + escapeJson(path) + "\"}");
     }
 
+    /// 将数据根目录中的真实文件索引同步到数据库。
     void syncDataRootIndex()
     {
         ensureDirectory(imageRoot_);
         database_.syncDataRoot(scanDataRoot(imageRoot_));
     }
 
+    /// API：查询患者列表。
     http::response<http::string_body> listPatients(const http::request<http::string_body>& req, const std::string& target)
     {
         syncDataRootIndex();
@@ -1217,6 +1284,7 @@ private:
         return jsonResponse(req, os.str());
     }
 
+    /// API：查询患者扫描记录。
     http::response<http::string_body> listScans(const http::request<http::string_body>& req, int patientId)
     {
         const std::vector<ScanResult> scans = database_.scansForPatient(patientId);
@@ -1237,6 +1305,7 @@ private:
         return jsonResponse(req, os.str());
     }
 
+    /// API：查询患者订单列表。
     http::response<http::string_body> listOrders(const http::request<http::string_body>& req, int patientId)
     {
         syncDataRootIndex();
@@ -1255,6 +1324,7 @@ private:
         return jsonResponse(req, os.str());
     }
 
+    /// API：打开订单最近扫描文件所在目录。
     http::response<http::string_body> openOrderFolder(const http::request<http::string_body>& req, int orderId)
     {
         std::string folder = parentDirectory(database_.latestPreviewPathForOrder(orderId));
@@ -1267,6 +1337,7 @@ private:
             + ",\"path\":\"" + escapeJson(folder) + "\"}");
     }
 
+    /// API：执行同步采图并替换订单采集记录。
     http::response<http::string_body> capture(const http::request<http::string_body>& req)
     {
         const int patientId = jsonIntValue(req.body(), "patientId");
@@ -1290,6 +1361,7 @@ private:
         return jsonResponse(req, os.str());
     }
 
+    /// API：基于订单最近采集图片生成彩色点云。
     http::response<http::string_body> reconstructOrder(const http::request<http::string_body>& req, int orderId)
     {
         std::vector<std::string> imagePaths = database_.latestImagePathsForOrder(orderId, 4);
@@ -1323,6 +1395,7 @@ private:
         return jsonResponse(req, pointCloudJson(orderId, result, previewPath));
     }
 
+    /// API：读取数据根目录下的 PLY 文件。
     http::response<http::string_body> pointCloudFile(const http::request<http::string_body>& req, const std::string& target)
     {
         std::map<std::string, std::string> query = parseQuery(target);
@@ -1339,6 +1412,7 @@ private:
         return plyResponse(req, body);
     }
 
+    /// API：读取数据根目录下的图像文件。
     http::response<http::string_body> imageFile(const http::request<http::string_body>& req, const std::string& target)
     {
         std::map<std::string, std::string> query = parseQuery(target);
@@ -1356,6 +1430,7 @@ private:
         return binaryFileResponse(req, bytes, contentTypeForImagePath(path));
     }
 
+    /// API：将订单图像和点云打包为 ZIP。
     http::response<http::string_body> packageOrder(const http::request<http::string_body>& req)
     {
         const int patientId = jsonIntValue(req.body(), "patientId");
@@ -1390,15 +1465,18 @@ private:
     }
 };
 
+/// 构造应用门面并创建隐藏实现。
 App::App(const AppConfig& config)
     : impl_(new Impl(config))
 {
 }
 
+/// 析构应用门面。
 App::~App()
 {
 }
 
+/// 将 HTTP 请求转交给隐藏实现处理。
 http::response<http::string_body> App::handle(const http::request<http::string_body>& req)
 {
     return impl_->handle(req);

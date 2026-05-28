@@ -8,6 +8,7 @@ using namespace facescan;
 
 namespace {
 
+/// 构造数据库测试使用的标准患者对象。
 Patient makePatient()
 {
     Patient patient;
@@ -26,6 +27,7 @@ Patient makePatient()
 
 } // namespace
 
+/// 验证创建患者时会同步创建首个订单。
 TEST(DatabaseTest, CreatesPatientWithInitialOrder)
 {
     facescan_test::ScopedTempDir temp("database_create");
@@ -50,6 +52,7 @@ TEST(DatabaseTest, CreatesPatientWithInitialOrder)
     EXPECT_EQ(orderId, orders.front().id);
 }
 
+/// 验证订单采集图片能正确写入扫描记录。
 TEST(DatabaseTest, StoresCaptureImagesForOrder)
 {
     facescan_test::ScopedTempDir temp("database_capture");

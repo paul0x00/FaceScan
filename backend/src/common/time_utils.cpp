@@ -1,4 +1,4 @@
-#include "common/time_utils.hpp"
+#include "time_utils.hpp"
 
 #include <chrono>
 #include <ctime>
@@ -7,6 +7,7 @@
 
 namespace facescan {
 
+/// 格式化当前本地时间。
 std::string nowText()
 {
     std::time_t t = std::time(NULL);
@@ -21,6 +22,7 @@ std::string nowText()
     return os.str();
 }
 
+/// 生成适合文件名和业务编号使用的毫秒时间戳。
 std::string stampTextMs()
 {
     const std::chrono::system_clock::time_point now = std::chrono::system_clock::now();

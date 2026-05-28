@@ -1,4 +1,5 @@
 <template>
+  <!-- 顶部品牌标识组件。 -->
   <div class="logo-mark" aria-label="Meyer">
     <div class="logo-ribbons">
       <span />
@@ -11,4 +12,3 @@
     </div>
   </div>
 </template>
-

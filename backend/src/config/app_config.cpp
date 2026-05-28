@@ -9,6 +9,7 @@ namespace facescan {
 
 namespace {
 
+/// 将保存到配置文件的路径转回相对 backend 根目录的形式。
 std::string configValueForFile(const std::string& configPath, const std::string& value)
 {
     const std::string root = backendRootFromConfigPath(configPath);
@@ -18,6 +19,7 @@ std::string configValueForFile(const std::string& configPath, const std::string&
     return value;
 }
 
+/// 将配置中的相对路径解析为运行期使用的路径。
 std::string resolveConfigPath(const std::string& backendRoot, const std::string& value)
 {
     if (!backendRoot.empty() && backendRoot != "." && value.find(backendRoot + "/") == 0) {
@@ -26,6 +28,7 @@ std::string resolveConfigPath(const std::string& backendRoot, const std::string&
     return joinPath(backendRoot, value);
 }
 
+/// 数据库固定保存在后端数据目录，避免被用户数据根目录迁移。
 std::string fixedDatabasePath(const std::string& backendRoot)
 {
     return joinPath(backendRoot, "data/db/facescan.sqlite3");

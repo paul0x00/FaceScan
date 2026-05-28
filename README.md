@@ -18,7 +18,7 @@
 ```bash
 cmake -S backend -B backend/build -G Ninja
 cmake --build backend/build
-./backend/build/facescan_backend 8080
+sudo ./backend/build/facescan_backend 8080
 ```
 
 后端测试：

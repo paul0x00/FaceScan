@@ -12,13 +12,20 @@ import type { PatientForm } from '../types'
 const route = useRoute()
 const router = useRouter()
 const store = usePatientStore()
+/** 当前编辑的患者主键，0 表示新建。 */
 const id = computed(() => Number(route.params.id || 0))
+/** 从订单入口进入编辑时携带的订单主键。 */
 const routeOrderId = computed(() => Number(route.query.orderId || 0))
+/** 表单提交状态。 */
 const saving = ref(false)
+/** 姓名校验错误文案。 */
 const nameError = ref('')
+/** 性别校验错误文案。 */
 const genderError = ref('')
+/** 手机号校验错误文案。 */
 const phoneError = ref('')
 
+/** 患者建档/编辑表单状态。 */
 const form = reactive<PatientForm>({
   patientNo: '',
   orderNo: '',
@@ -30,6 +37,7 @@ const form = reactive<PatientForm>({
   remark: ''
 })
 
+/** 进入编辑页时加载患者资料并回填表单。 */
 onMounted(async () => {
   if (!store.patients.length) {
     await store.load()
@@ -47,6 +55,7 @@ onMounted(async () => {
   }
 })
 
+/** 限制手机号只允许输入 11 位数字。 */
 function handlePhoneInput(value: string) {
   if (/[^\d]/.test(value)) {
     phoneError.value = '手机号只能输入数字'
@@ -61,6 +70,7 @@ function handlePhoneInput(value: string) {
   phoneError.value = ''
 }
 
+/** 将年龄输入规整为 0-130 范围内的整数或空值。 */
 function handleAgeInput(value: string | number) {
   const digits = String(value ?? '').replace(/\D/g, '')
   if (!digits) {
@@ -70,24 +80,28 @@ function handleAgeInput(value: string | number) {
   form.age = Math.min(130, Number(digits))
 }
 
+/** 姓名输入后清除必填错误。 */
 function handleNameInput() {
   if (form.name.trim()) {
     nameError.value = ''
   }
 }
 
+/** 性别选择后清除必填错误。 */
 function handleGenderChange() {
   if (form.gender) {
     genderError.value = ''
   }
 }
 
+/** 阻止只读字段获得焦点，保持只读控件的浏览体验。 */
 function preventReadonlyFocus(event: Event) {
   event.preventDefault()
   const target = event.target as HTMLElement | null
   target?.blur()
 }
 
+/** 校验并保存患者资料，成功后进入拍摄流程。 */
 async function submit() {
   form.name = form.name.trim()
   nameError.value = form.name ? '' : '请输入姓名'

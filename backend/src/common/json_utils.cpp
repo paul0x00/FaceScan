@@ -1,4 +1,4 @@
-#include "common/json_utils.hpp"
+#include "json_utils.hpp"
 
 #include <cctype>
 #include <cstdlib>
@@ -7,6 +7,7 @@
 
 namespace facescan {
 
+/// 转义字符串为 JSON 字符串安全内容。
 std::string escapeJson(const std::string& value)
 {
     std::ostringstream os;
@@ -31,11 +32,13 @@ std::string escapeJson(const std::string& value)
     return os.str();
 }
 
+/// 构造字符串 JSON 键值片段。
 std::string jsonPair(const std::string& key, const std::string& value)
 {
     return "\"" + key + "\":\"" + escapeJson(value) + "\"";
 }
 
+/// 构造整数 JSON 键值片段。
 std::string jsonPair(const std::string& key, int value)
 {
     std::ostringstream os;
@@ -43,6 +46,7 @@ std::string jsonPair(const std::string& key, int value)
     return os.str();
 }
 
+/// 从简单 JSON 文本中查找并解析字符串字段。
 std::string jsonStringValue(const std::string& body, const std::string& key)
 {
     const std::string needle = "\"" + key + "\"";
@@ -81,6 +85,7 @@ std::string jsonStringValue(const std::string& body, const std::string& key)
     return out;
 }
 
+/// 从简单 JSON 文本中查找并解析整数字段。
 int jsonIntValue(const std::string& body, const std::string& key)
 {
     const std::string needle = "\"" + key + "\"";
@@ -99,6 +104,7 @@ int jsonIntValue(const std::string& body, const std::string& key)
     return std::atoi(body.c_str() + pos);
 }
 
+/// 解码查询串中的 percent-encoding 和加号空格。
 std::string urlDecode(const std::string& value)
 {
     std::string out;
@@ -120,6 +126,7 @@ std::string urlDecode(const std::string& value)
     return out;
 }
 
+/// 解析 URL target 中的查询参数。
 std::map<std::string, std::string> parseQuery(const std::string& target)
 {
     std::map<std::string, std::string> query;
@@ -140,6 +147,7 @@ std::map<std::string, std::string> parseQuery(const std::string& target)
     return query;
 }
 
+/// 移除 URL target 的查询串部分。
 std::string pathOnly(const std::string& target)
 {
     const std::size_t pos = target.find('?');

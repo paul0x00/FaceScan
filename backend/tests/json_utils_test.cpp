@@ -4,11 +4,13 @@
 
 using namespace facescan;
 
+/// 验证 JSON 字符串转义。
 TEST(JsonUtilsTest, EscapesStringsForJson)
 {
     EXPECT_EQ("a\\\"b\\\\c\\n", escapeJson("a\"b\\c\n"));
 }
 
+/// 验证轻量 JSON 字段读取。
 TEST(JsonUtilsTest, ReadsSimpleStringAndIntegerFields)
 {
     const std::string body = "{\"name\":\"Alice\",\"age\":32,\"remark\":\"line\\nnext\"}";
@@ -20,6 +22,7 @@ TEST(JsonUtilsTest, ReadsSimpleStringAndIntegerFields)
     EXPECT_EQ(0, jsonIntValue(body, "missing"));
 }
 
+/// 验证 URL 查询串和路径解析。
 TEST(JsonUtilsTest, ParsesUrlQueryAndPath)
 {
     const std::string target = "/api/patients?keyword=%E6%B5%8B%E8%AF%95&date=2026-05-26&empty=";

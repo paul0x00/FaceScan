@@ -8,16 +8,26 @@ import { capture, createOrder, fetchOrders, reconstructOrder, startCamera, stopC
 
 const route = useRoute()
 const router = useRouter()
+/** 当前拍摄患者主键。 */
 const patientId = computed(() => Number(route.params.id))
+/** 路由指定的订单主键，缺失时自动选择或创建。 */
 const routeOrderId = computed(() => Number(route.query.orderId || 0))
+/** 前端预览刷新开关。 */
 const running = ref(true)
+/** 用于破坏图片缓存的帧时间戳。 */
 const frameTick = ref(Date.now())
+/** 当前拍摄订单主键。 */
 const orderId = ref<number>()
+/** 同步采图和点云生成进行中状态。 */
 const capturing = ref(false)
+/** MVP 相机曝光参数占位值。 */
 const exposure = ref(42)
+/** MVP 相机亮度参数占位值。 */
 const brightness = ref(56)
+/** 预览刷新定时器句柄。 */
 let timer = 0
 
+/** 四路相机预览配置。 */
 const cameras = [
   { view: 'left', label: '左侧相机图像' },
   { view: 'front', label: '正面相机图像' },
@@ -25,10 +35,12 @@ const cameras = [
   { view: 'bottom', label: '下方相机图像' }
 ]
 
+/** 构造相机预览 URL，并用时间戳刷新缓存。 */
 function frameUrl() {
   return `/api/camera/frame?t=${frameTick.value}`
 }
 
+/** 启动相机、解析订单并启动预览刷新循环。 */
 onMounted(async () => {
   try {
     await startCamera()
@@ -55,21 +67,25 @@ onMounted(async () => {
   }, 100)
 })
 
+/** 离开页面时停止刷新和后端相机预览。 */
 onBeforeUnmount(async () => {
   window.clearInterval(timer)
   await stopCamera()
 })
 
+/** 暂停或恢复前端预览刷新。 */
 function toggle() {
   running.value = !running.value
 }
 
+/** 恢复 MVP 相机参数占位控件默认值。 */
 function resetCameraParams() {
   exposure.value = 42
   brightness.value = 56
   ElMessage.success('相机参数已恢复默认')
 }
 
+/** 执行同步采图、点云重建，并进入点云查看页。 */
 async function shoot() {
   capturing.value = true
   const loading = ElLoading.service({

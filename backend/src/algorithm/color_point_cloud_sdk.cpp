@@ -1,7 +1,7 @@
-#include "algorithm/color_point_cloud_sdk.hpp"
+#include "color_point_cloud_sdk.hpp"
 
-#include "common/file_utils.hpp"
-#include "common/time_utils.hpp"
+#include "../common/file_utils.hpp"
+#include "../common/time_utils.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -15,6 +15,7 @@ namespace facescan {
 
 namespace {
 
+/// 简单 RGB 颜色值，供 PPM/SVG 采样和 PLY 写出复用。
 struct Rgb {
     int r;
     int g;
@@ -24,6 +25,7 @@ struct Rgb {
     Rgb(int rr, int gg, int bb) : r(rr), g(gg), b(bb) {}
 };
 
+/// PLY 点云中的单个彩色点。
 struct Point {
     double x;
     double y;
@@ -31,6 +33,7 @@ struct Point {
     Rgb color;
 };
 
+/// 从源图像抽象出的可采样纹理。
 struct ImageSource {
     std::string path;
     std::string view;
@@ -42,6 +45,7 @@ struct ImageSource {
 
     ImageSource() : width(0), height(0), colorA(172, 205, 214), colorB(120, 164, 181) {}
 
+    /// 按归一化坐标采样颜色；无像素数据时退化为渐变色。
     Rgb sample(double u, double v) const
     {
         const double cu = clamp(u, 0.0, 1.0);
@@ -55,11 +59,13 @@ struct ImageSource {
         return mix(colorA, colorB, t);
     }
 
+    /// 将浮点值限制在指定范围。
     static double clamp(double value, double low, double high)
     {
         return std::max(low, std::min(high, value));
     }
 
+    /// 在两个颜色之间做线性插值。
     static Rgb mix(const Rgb& a, const Rgb& b, double t)
     {
         const double cc = clamp(t, 0.0, 1.0);
@@ -70,16 +76,19 @@ struct ImageSource {
     }
 };
 
+/// 将整数限制在 8 位颜色通道范围。
 int clampByte(int value)
 {
     return std::max(0, std::min(255, value));
 }
 
+/// 将浮点数限制在指定范围。
 double clampDouble(double value, double low, double high)
 {
     return std::max(low, std::min(high, value));
 }
 
+/// 将整数转换为字符串。
 std::string toString(int value)
 {
     std::ostringstream os;
@@ -87,6 +96,7 @@ std::string toString(int value)
     return os.str();
 }
 
+/// 根据文件名中的视角后缀推断相机视角。
 std::string viewFromPath(const std::string& path)
 {
     if (path.find("_left") != std::string::npos) return "left";
@@ -96,6 +106,7 @@ std::string viewFromPath(const std::string& path)
     return "front";
 }
 
+/// 使用 FNV-1a 对路径生成稳定哈希。
 unsigned int pathHash(const std::string& path)
 {
     unsigned int hash = 2166136261u;
@@ -106,6 +117,7 @@ unsigned int pathHash(const std::string& path)
     return hash;
 }
 
+/// 文件内容不可解析时，用路径哈希生成稳定的兜底颜色。
 Rgb fallbackColor(const std::string& path, int offset)
 {
     const unsigned int h = pathHash(path) + static_cast<unsigned int>(offset * 53);
@@ -115,6 +127,7 @@ Rgb fallbackColor(const std::string& path, int offset)
         105 + static_cast<int>((h >> 16) % 106));
 }
 
+/// HSL 转 RGB 的单通道辅助计算。
 double hueToRgb(double p, double q, double t)
 {
     if (t < 0.0) t += 1.0;
@@ -125,6 +138,7 @@ double hueToRgb(double p, double q, double t)
     return p;
 }
 
+/// 将 SVG 中的 HSL 颜色转换为 RGB。
 Rgb hslToRgb(double h, double s, double l)
 {
     h = std::fmod(h, 360.0) / 360.0;
@@ -145,6 +159,7 @@ Rgb hslToRgb(double h, double s, double l)
         clampByte(static_cast<int>(b * 255.0)));
 }
 
+/// 从指定位置解析 hsl(...) 片段。
 bool parseHslAt(const std::string& text, std::size_t pos, Rgb* out)
 {
     if (pos == std::string::npos || !out) {
@@ -164,6 +179,7 @@ bool parseHslAt(const std::string& text, std::size_t pos, Rgb* out)
     return true;
 }
 
+/// 从模拟 SVG 预览中提取渐变色作为点云纹理来源。
 void loadSvgColors(const std::string& path, ImageSource* source)
 {
     if (!source) {
@@ -184,6 +200,7 @@ void loadSvgColors(const std::string& path, ImageSource* source)
     }
 }
 
+/// 读取 PPM token，跳过以 # 开头的注释行。
 std::string nextToken(std::istream& in)
 {
     std::string token;
@@ -198,6 +215,7 @@ std::string nextToken(std::istream& in)
     return "";
 }
 
+/// 加载 P3/P6 PPM 图像并填充可采样像素。
 bool loadPpm(const std::string& path, ImageSource* source)
 {
     if (!source) {
@@ -249,6 +267,7 @@ bool loadPpm(const std::string& path, ImageSource* source)
     return true;
 }
 
+/// 构造图像采样源，支持 PPM 像素或 SVG 渐变兜底。
 ImageSource loadImageSource(const std::string& path)
 {
     ImageSource source;
@@ -262,11 +281,13 @@ ImageSource loadImageSource(const std::string& path)
     return source;
 }
 
+/// 椭圆面部轮廓掩膜，用于过滤正面/侧面采样点。
 double faceMask(double a, double b)
 {
     return a * a + (b * 1.08) * (b * 1.08);
 }
 
+/// 根据归一化面部坐标生成近似面部深度。
 double faceDepth(double a, double b)
 {
     const double mask = clampDouble(1.0 - faceMask(a, b), 0.0, 1.0);
@@ -276,6 +297,7 @@ double faceDepth(double a, double b)
     return 8.0 + dome + nose + cheeks;
 }
 
+/// 将指定视角的二维采样点映射到三维点云坐标。
 Point makePoint(const std::string& view, double u, double v, const Rgb& color)
 {
     const double a = 2.0 * u - 1.0;
@@ -304,6 +326,7 @@ Point makePoint(const std::string& view, double u, double v, const Rgb& color)
     return p;
 }
 
+/// 增量更新点云结果的包围盒。
 void addBounds(PointCloudBuildResult* result, const Point& p)
 {
     if (!result) return;
@@ -321,6 +344,7 @@ void addBounds(PointCloudBuildResult* result, const Point& p)
     }
 }
 
+/// 将彩色点集合写为 ASCII PLY 文件。
 bool writePly(const std::string& path, const std::vector<Point>& points)
 {
     ensureDirectory(parentDirectory(path));
@@ -350,11 +374,13 @@ bool writePly(const std::string& path, const std::vector<Point>& points)
 
 } // namespace
 
+/// 指定输出根目录，空路径时使用默认点云目录。
 ColorPointCloudSdk::ColorPointCloudSdk(const std::string& outputRoot)
     : outputRoot_(outputRoot.empty() ? "data/pointclouds" : outputRoot)
 {
 }
 
+/// 按多视角源图像采样并生成 MVP 版本的彩色 PLY 点云。
 PointCloudBuildResult ColorPointCloudSdk::reconstruct(
     const std::vector<std::string>& imagePaths,
     const PointCloudOptions& options) const

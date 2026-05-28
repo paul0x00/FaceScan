@@ -16,24 +16,40 @@ import type { ScanResult } from '../types'
 
 const route = useRoute()
 const router = useRouter()
+/** 当前患者主键。 */
 const patientId = computed(() => Number(route.params.id))
+/** 当前订单主键。 */
 const orderId = computed(() => Number(route.query.orderId || 0))
+/** 路由直接传入的 PLY 路径。 */
 const routePlyPath = computed(() => String(route.query.plyPath || ''))
+/** 患者扫描记录。 */
 const scans = ref<ScanResult[]>([])
+/** 当前加载的 PLY 文件路径。 */
 const plyPath = ref('')
+/** vtk.js 读取到的点数量。 */
 const pointCount = ref(0)
+/** 点云加载状态。 */
 const loading = ref(true)
+/** 点云加载错误信息。 */
 const error = ref('')
+/** vtk.js 渲染容器。 */
 const viewerEl = ref<HTMLElement | null>(null)
 
+/** vtk.js 通用渲染窗口实例。 */
 let genericWindow: any = null
+/** vtk.js 渲染器实例。 */
 let renderer: any = null
+/** vtk.js 渲染窗口实例。 */
 let renderWindow: any = null
+/** 容器尺寸变化监听器。 */
 let resizeObserver: ResizeObserver | null = null
 
+/** 当前 PLY 文件读取 URL。 */
 const fileUrl = computed(() => (plyPath.value ? pointCloudFileUrl(plyPath.value) : ''))
+/** 标题右侧状态文本。 */
 const titleText = computed(() => (pointCount.value ? `${pointCount.value} 点` : '等待加载'))
 
+/** 解析当前订单点云路径并初始化 vtk.js 加载流程。 */
 onMounted(async () => {
   scans.value = await fetchScans(patientId.value)
   const latest = scans.value.find((item) => item.plyPath && (!orderId.value || item.orderId === orderId.value))
@@ -47,12 +63,14 @@ onMounted(async () => {
   await loadPointCloud()
 })
 
+/** 销毁 vtk.js 资源和尺寸监听器。 */
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   resizeObserver = null
   genericWindow?.delete()
 })
 
+/** 加载 PLY 点云并创建 vtk.js 点渲染管线。 */
 async function loadPointCloud() {
   if (!viewerEl.value || !plyPath.value) return
   loading.value = true
@@ -96,11 +114,13 @@ async function loadPointCloud() {
   }
 }
 
+/** 将 vtk.js 相机重置到完整点云视角。 */
 function resetCamera() {
   renderer?.resetCamera()
   renderWindow?.render()
 }
 
+/** 请求后端打开当前订单目录。 */
 async function openFolder() {
   if (!orderId.value) return
   const result = await openOrderFolder(orderId.value)

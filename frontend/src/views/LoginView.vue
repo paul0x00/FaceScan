@@ -7,10 +7,14 @@ import { login } from '../api/client'
 import LogoMark from '../components/LogoMark.vue'
 
 const router = useRouter()
+/** 登录用户名，MVP 阶段默认 admin。 */
 const username = ref('admin')
+/** 登录密码，MVP 阶段默认 admin。 */
 const password = ref('admin')
+/** 登录请求进行中状态。 */
 const loading = ref(false)
 
+/** 提交登录并进入工作台。 */
 async function submit() {
   loading.value = true
   try {

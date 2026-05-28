@@ -24,19 +24,23 @@ namespace facescan {
 
 namespace {
 
+/// 前端固定展示的四个采集视角。
 const char* kViewNames[] = { "left", "front", "right", "bottom" };
 
+/// 向字符串追加一个低 8 位字节。
 void appendByte(std::string* out, unsigned int value)
 {
     out->push_back(static_cast<char>(value & 0xffu));
 }
 
+/// 按小端序追加 16 位整数。
 void appendUInt16Le(std::string* out, unsigned int value)
 {
     appendByte(out, value);
     appendByte(out, value >> 8);
 }
 
+/// 按小端序追加 32 位整数。
 void appendUInt32Le(std::string* out, unsigned int value)
 {
     appendByte(out, value);
@@ -45,6 +49,7 @@ void appendUInt32Le(std::string* out, unsigned int value)
     appendByte(out, value >> 24);
 }
 
+/// 将 RGB 帧编码为无需额外依赖的 BMP 预览图。
 std::string bmpFromRgb(const CameraFrameData& frame)
 {
     if (!frame.valid() || frame.data.size() < static_cast<std::size_t>(frame.width) * frame.height * 3u) {
@@ -90,6 +95,7 @@ std::string bmpFromRgb(const CameraFrameData& frame)
     return out;
 }
 
+/// 将 RGB 彩色帧写为 PPM 文件。
 void writePpm(const std::string& path, const CameraFrameData& frame)
 {
     if (!frame.valid() || frame.data.size() < static_cast<std::size_t>(frame.width) * frame.height * 3u) {
@@ -104,6 +110,7 @@ void writePpm(const std::string& path, const CameraFrameData& frame)
     file.write(reinterpret_cast<const char*>(&frame.data[0]), static_cast<std::streamsize>(frame.width * frame.height * 3u));
 }
 
+/// 将红外帧写为 PGM 文件，兼容 8 位和 16 位灰度数据。
 void writePgm(const std::string& path, const CameraFrameData& frame)
 {
     if (!frame.valid()) {
@@ -133,6 +140,7 @@ void writePgm(const std::string& path, const CameraFrameData& frame)
     throw std::runtime_error("Unsupported IR frame layout: " + frame.format);
 }
 
+/// 写入一次同步采集的元数据清单，便于排查真实设备采集问题。
 void writeCaptureManifest(const SynchronizedCaptureFrames& capture)
 {
     if (capture.manifestPath.empty()) {
@@ -159,38 +167,46 @@ void writeCaptureManifest(const SynchronizedCaptureFrames& capture)
     file << "}\n";
 }
 
+/// 模拟相机实现，用 SVG 生成稳定的四路预览和采集图片。
 class MockCameraDevice : public ICameraDevice {
 public:
+    /// 使用指定图片根目录初始化模拟相机。
     explicit MockCameraDevice(const std::string& imageRoot)
         : imageRoot_(CameraManager::normalizeRoot(imageRoot)), streaming_(false), frameIndex_(0)
     {
     }
 
+    /// 标记模拟预览为运行状态。
     void start()
     {
         streaming_ = true;
     }
 
+    /// 标记模拟预览为停止状态。
     void stop()
     {
         streaming_ = false;
     }
 
+    /// 返回模拟预览状态。
     bool streaming() const
     {
         return streaming_;
     }
 
+    /// 更新模拟采集保存根目录。
     void setImageRoot(const std::string& imageRoot)
     {
         imageRoot_ = CameraManager::normalizeRoot(imageRoot);
     }
 
+    /// 生成指定视角的 SVG 预览图。
     CameraImage frameImage(const std::string& view)
     {
         return CameraImage(frameSvg(view), "image/svg+xml; charset=utf-8");
     }
 
+    /// 写出四张 SVG 采集图并返回文件路径。
     std::vector<std::string> capture(const std::string& orderFolder, const std::string& orderName)
     {
         ensureDirectory(orderFolder);
@@ -206,10 +222,14 @@ public:
     }
 
 private:
+    /// 当前图片保存根目录。
     std::string imageRoot_;
+    /// 模拟预览是否运行。
     std::atomic<bool> streaming_;
+    /// 用于制造动态预览效果的帧序号。
     std::atomic<int> frameIndex_;
 
+    /// 根据视角和帧序号绘制模拟相机 SVG。
     std::string frameSvg(const std::string& view)
     {
         const int idx = ++frameIndex_;
@@ -232,6 +252,7 @@ private:
         return os.str();
     }
 
+    /// 返回视角的中文展示名。
     static std::string cameraLabel(const std::string& view)
     {
         if (view == "left") return "左侧相机图像";
@@ -241,6 +262,7 @@ private:
         return "相机图像";
     }
 
+    /// 返回视角对应的基础色相。
     static int colorHue(const std::string& view)
     {
         if (view == "left") return 174;
@@ -253,11 +275,13 @@ private:
 
 #if defined(FACESCAN_WITH_ORBBEC)
 
+/// 将 Orbbec SDK 图像格式转换为可读文本。
 std::string formatName(OBFormat format)
 {
     return ob::TypeHelper::convertOBFormatTypeToString(format);
 }
 
+/// 从帧集合中查找可用的红外帧，兼容不同设备的帧类型命名。
 std::shared_ptr<ob::IRFrame> getIrFrameFromSet(const std::shared_ptr<ob::FrameSet>& frameSet)
 {
     if (!frameSet) {
@@ -283,6 +307,7 @@ std::shared_ptr<ob::IRFrame> getIrFrameFromSet(const std::shared_ptr<ob::FrameSe
     return std::shared_ptr<ob::IRFrame>();
 }
 
+/// 创建彩色流配置。
 std::shared_ptr<ob::Config> makeColorConfig()
 {
     std::shared_ptr<ob::Config> config(new ob::Config());
@@ -290,6 +315,7 @@ std::shared_ptr<ob::Config> makeColorConfig()
     return config;
 }
 
+/// 创建红外流配置。
 std::shared_ptr<ob::Config> makeIrConfig()
 {
     std::shared_ptr<ob::Config> config(new ob::Config());
@@ -297,6 +323,7 @@ std::shared_ptr<ob::Config> makeIrConfig()
     return config;
 }
 
+/// 复制 Orbbec 彩色帧到项目内部帧结构。
 CameraFrameData copyColorFrame(const std::shared_ptr<ob::ColorFrame>& frame)
 {
     CameraFrameData out;
@@ -317,6 +344,7 @@ CameraFrameData copyColorFrame(const std::shared_ptr<ob::ColorFrame>& frame)
     return out;
 }
 
+/// 复制 Orbbec 红外帧到项目内部帧结构。
 CameraFrameData copyIrFrame(const std::shared_ptr<ob::IRFrame>& frame, const std::string& stream)
 {
     CameraFrameData out;
@@ -337,8 +365,10 @@ CameraFrameData copyIrFrame(const std::shared_ptr<ob::IRFrame>& frame, const std
     return out;
 }
 
+/// Orbbec 真实相机实现，负责彩色预览和双红外同步采集。
 class OrbbecCameraDevice : public ICameraDevice {
 public:
+    /// 使用指定图片根目录初始化真实设备。
     explicit OrbbecCameraDevice(const std::string& imageRoot)
         : imageRoot_(CameraManager::normalizeRoot(imageRoot)),
           previewRunning_(false),
@@ -347,6 +377,7 @@ public:
     {
     }
 
+    /// 析构时确保预览线程和 SDK 管线停止。
     ~OrbbecCameraDevice()
     {
         try {
@@ -355,29 +386,34 @@ public:
         }
     }
 
+    /// 开启彩色预览流。
     void start()
     {
         std::lock_guard<std::mutex> lock(controlMutex_);
         startColorPreviewLocked();
     }
 
+    /// 停止彩色预览流。
     void stop()
     {
         std::lock_guard<std::mutex> lock(controlMutex_);
         stopColorPreviewLocked();
     }
 
+    /// 返回彩色预览是否运行。
     bool streaming() const
     {
         return previewRunning_;
     }
 
+    /// 更新数据保存根目录。
     void setImageRoot(const std::string& imageRoot)
     {
         std::lock_guard<std::mutex> lock(dataMutex_);
         imageRoot_ = CameraManager::normalizeRoot(imageRoot);
     }
 
+    /// 返回最近彩色帧的 BMP 预览；尚无帧时返回等待 SVG。
     CameraImage frameImage(const std::string&)
     {
         CameraFrameData frame;
@@ -401,6 +437,7 @@ public:
         return CameraImage(waitingSvg(), "image/svg+xml; charset=utf-8");
     }
 
+    /// 暂停预览后采集彩色、左红外和右红外帧，并写出纹理图。
     std::vector<std::string> capture(const std::string& orderFolder, const std::string& orderName)
     {
         std::lock_guard<std::mutex> lock(controlMutex_);
@@ -463,19 +500,32 @@ public:
     }
 
 private:
+    /// 当前图片保存根目录。
     std::string imageRoot_;
+    /// Orbbec 数据管线。
     std::unique_ptr<ob::Pipeline> pipe_;
+    /// 当前连接的 Orbbec 设备。
     std::shared_ptr<ob::Device> device_;
+    /// 保护 SDK 管线启停和采集流程。
     mutable std::mutex controlMutex_;
+    /// 保护最新帧、缓存预览和采集结果。
     mutable std::mutex dataMutex_;
+    /// 彩色预览后台线程。
     std::thread previewThread_;
+    /// 彩色预览是否运行。
     std::atomic<bool> previewRunning_;
+    /// 通知预览线程退出。
     std::atomic<bool> stopPreview_;
+    /// 最近一帧彩色图像。
     CameraFrameData latestColor_;
+    /// 最近一帧编码后的预览图缓存。
     CameraImage latestPreview_;
+    /// 预览缓存对应的彩色帧序号。
     uint64_t latestPreviewFrameIndex_;
+    /// 最近一次同步采集结果。
     SynchronizedCaptureFrames lastCapture_;
 
+    /// 在持有控制锁时启动彩色预览。
     void startColorPreviewLocked()
     {
         if (previewRunning_) {
@@ -488,6 +538,7 @@ private:
         previewThread_ = std::thread(&OrbbecCameraDevice::previewLoop, this);
     }
 
+    /// 在持有控制锁时停止彩色预览。
     void stopColorPreviewLocked()
     {
         if (!previewRunning_) {
@@ -502,6 +553,7 @@ private:
         stopPreview_ = false;
     }
 
+    /// 后台循环读取彩色帧并刷新最新帧缓存。
     void previewLoop()
     {
         for (;;) {
@@ -530,12 +582,14 @@ private:
         }
     }
 
+    /// 读取最近彩色帧的快照。
     CameraFrameData latestColorFrameLocked() const
     {
         std::lock_guard<std::mutex> lock(dataMutex_);
         return latestColor_;
     }
 
+    /// 在超时时间内等待可用彩色帧。
     CameraFrameData waitForLatestColorLocked(int timeoutMs) const
     {
         const std::chrono::steady_clock::time_point deadline =
@@ -550,6 +604,7 @@ private:
         return latestColorFrameLocked();
     }
 
+    /// 切换红外通道并采集一帧红外图像。
     CameraFrameData captureIrFrameLocked(int channel, const std::string& stream)
     {
         setIrChannel(channel);
@@ -581,6 +636,7 @@ private:
         throw std::runtime_error("Timeout while waiting for " + stream + " frame");
     }
 
+    /// 设置 Orbbec 双目红外数据源通道。
     void setIrChannel(int channel)
     {
         ensureDevice();
@@ -590,6 +646,7 @@ private:
         device_->setIntProperty(OB_PROP_IR_CHANNEL_DATA_SOURCE_INT, channel);
     }
 
+    /// 延迟创建 SDK 管线并缓存设备句柄。
     void ensureDevice()
     {
         if (!pipe_) {
@@ -600,6 +657,7 @@ private:
         }
     }
 
+    /// 构造等待真实相机彩色流的占位 SVG。
     static std::string waitingSvg()
     {
         std::ostringstream os;
@@ -613,6 +671,7 @@ private:
 };
 #endif
 
+/// 根据配置创建相机设备实例。
 std::unique_ptr<ICameraDevice> createCameraDevice(const std::string& imageRoot, const std::string& cameraMode)
 {
 #if defined(FACESCAN_WITH_ORBBEC)
@@ -629,45 +688,54 @@ std::unique_ptr<ICameraDevice> createCameraDevice(const std::string& imageRoot, 
 
 } // namespace
 
+/// 虚析构函数定义，确保派生设备可通过接口指针释放。
 ICameraDevice::~ICameraDevice()
 {
 }
 
+/// 默认使用模拟相机模式。
 CameraManager::CameraManager(const std::string& imageRoot)
     : device_(createCameraDevice(imageRoot, "mock"))
 {
 }
 
+/// 按配置模式创建相机设备。
 CameraManager::CameraManager(const std::string& imageRoot, const std::string& cameraMode)
     : device_(createCameraDevice(imageRoot, cameraMode))
 {
 }
 
+/// 注入设备实现，便于单元测试替换真实设备。
 CameraManager::CameraManager(std::unique_ptr<ICameraDevice> device)
     : device_(std::move(device))
 {
 }
 
+/// 启动当前设备预览。
 void CameraManager::start()
 {
     device_->start();
 }
 
+/// 停止当前设备预览。
 void CameraManager::stop()
 {
     device_->stop();
 }
 
+/// 查询当前设备预览状态。
 bool CameraManager::streaming() const
 {
     return device_->streaming();
 }
 
+/// 更新当前设备保存根目录。
 void CameraManager::setImageRoot(const std::string& imageRoot)
 {
     device_->setImageRoot(imageRoot);
 }
 
+/// 规范化目录路径，避免后续拼接出现重复分隔符。
 std::string CameraManager::normalizeRoot(const std::string& path)
 {
     if (path.empty()) {
@@ -679,11 +747,13 @@ std::string CameraManager::normalizeRoot(const std::string& path)
     return path;
 }
 
+/// 代理获取设备预览图。
 CameraImage CameraManager::frameImage(const std::string& view)
 {
     return device_->frameImage(view);
 }
 
+/// 代理执行设备采集。
 std::vector<std::string> CameraManager::capture(const std::string& orderFolder, const std::string& orderName)
 {
     return device_->capture(orderFolder, orderName);

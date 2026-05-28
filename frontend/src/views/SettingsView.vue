@@ -8,16 +8,22 @@ import type { AppSettings } from '../types'
 
 const router = useRouter()
 const route = useRoute()
+/** 当前设置分区。 */
 const active = ref('通用')
+/** 设置加载状态。 */
 const loading = ref(false)
+/** 设置保存状态。 */
 const saving = ref(false)
+/** 后端返回的系统设置。 */
 const settings = ref<AppSettings>({
   dataRoot: '',
   databasePath: '',
   configPath: '',
   cameraMode: ''
 })
+/** 数据根目录输入草稿，保存前不直接改动 settings。 */
 const dataRootDraft = ref('')
+/** 设置页左侧分区导航配置。 */
 const sections = [
   { label: '通用', icon: Settings },
   { label: '信息管理', icon: Database },
@@ -26,10 +32,12 @@ const sections = [
   { label: '三维处理', icon: SlidersHorizontal },
   { label: '关于', icon: Info }
 ]
+/** 只有从首页进入设置时允许修改数据目录。 */
 const canEditDataRoot = computed(() => route.query.from === 'browse')
 
 onMounted(loadSettings)
 
+/** 从后端读取系统设置并同步输入草稿。 */
 async function loadSettings() {
   loading.value = true
   try {
@@ -40,6 +48,7 @@ async function loadSettings() {
   }
 }
 
+/** 校验并保存数据根目录，必要时确认患者文件迁移。 */
 async function saveDataRoot() {
   if (!canEditDataRoot.value) {
     ElMessage.warning('请从首页进入设置后再修改数据保存目录')
@@ -83,6 +92,7 @@ async function saveDataRoot() {
   }
 }
 
+/** 调用系统目录选择器并回填路径。 */
 async function chooseRoot() {
   if (!canEditDataRoot.value) {
     ElMessage.warning('请从首页进入设置后再选择数据保存目录')

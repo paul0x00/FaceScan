@@ -11,24 +11,33 @@ import WindowIcons from '../components/WindowIcons.vue'
 
 const router = useRouter()
 const store = usePatientStore()
+/** 患者检索条件。 */
 const filters = reactive({
   keyword: '',
   date: ''
 })
+/** 当前激活的患者主键。 */
 const activeId = ref(0)
+/** 搜索按钮加载状态。 */
 const searching = ref(false)
+/** 整页刷新加载状态。 */
 const refreshing = ref(false)
+/** 当前患者订单列表。 */
 const orders = ref<Order[]>([])
+/** 订单列表加载状态。 */
 const ordersLoading = ref(false)
 
+/** 当前选中患者；未选中时回退到第一位患者。 */
 const selected = computed(() => store.patients.find((item) => item.id === activeId.value) ?? store.patients[0])
 
 onMounted(refreshDashboard)
 
+/** 切换患者时自动刷新右侧订单列表。 */
 watch(activeId, () => {
   loadOrders()
 })
 
+/** 按当前过滤条件搜索患者并刷新订单列表。 */
 async function search() {
   searching.value = true
   try {
@@ -40,12 +49,14 @@ async function search() {
   }
 }
 
+/** 清空过滤条件并重新搜索。 */
 async function reset() {
   filters.keyword = ''
   filters.date = ''
   await search()
 }
 
+/** 刷新首页患者和订单数据，并尽量保留当前选中患者。 */
 async function refreshDashboard() {
   refreshing.value = true
   try {
@@ -60,22 +71,27 @@ async function refreshDashboard() {
   }
 }
 
+/** 打开新建或编辑患者资料页。 */
 function openBasic(id?: number) {
   router.push(id ? `/basic/${id}` : '/basic')
 }
 
+/** 打开指定订单关联的患者资料页。 */
 function openOrderBasic(patientId: number, orderId: number) {
   router.push(`/basic/${patientId}?orderId=${orderId}`)
 }
 
+/** 打开指定患者订单的拍摄页。 */
 function openShoot(patientId: number, orderId: number) {
   router.push(`/shoot/${patientId}?orderId=${orderId}`)
 }
 
+/** 返回订单点云预览图 URL；未生成点云时返回空。 */
 function orderPreviewUrl(order: Order) {
   return order.plyPath && order.previewPath ? imageFileUrl(order.previewPath) : ''
 }
 
+/** 加载当前患者订单。 */
 async function loadOrders() {
   if (!activeId.value) {
     orders.value = []
@@ -89,6 +105,7 @@ async function loadOrders() {
   }
 }
 
+/** 为患者新增订单并刷新订单列表。 */
 async function addOrder(patientId: number) {
   const order = await createOrder(patientId)
   ElMessage.success(`订单 ${order.orderNo} 已生成`)
@@ -96,6 +113,7 @@ async function addOrder(patientId: number) {
   await loadOrders()
 }
 
+/** 二次确认后删除患者及其全部订单数据。 */
 async function removePatient(patientId: number) {
   try {
     await ElMessageBox.confirm('删除患者会同步删除其全部订单和采图记录，是否继续？', '删除患者', {
@@ -113,6 +131,7 @@ async function removePatient(patientId: number) {
   await loadOrders()
 }
 
+/** 二次确认后删除单个订单。 */
 async function removeOrder(order: Order) {
   try {
     await ElMessageBox.confirm(`确认删除订单 ${order.orderNo}？`, '删除订单', {
@@ -128,6 +147,7 @@ async function removeOrder(order: Order) {
   await loadOrders()
 }
 
+/** 请求后端在系统文件管理器中打开订单目录。 */
 async function revealOrderFolder(order: Order) {
   const result = await openOrderFolder(order.id)
   if (result.ok) {

@@ -1,7 +1,7 @@
-#include "database/database.hpp"
+#include "database.hpp"
 
-#include "common/file_utils.hpp"
-#include "common/time_utils.hpp"
+#include "../common/file_utils.hpp"
+#include "../common/time_utils.hpp"
 
 #include <algorithm>
 #include <map>
@@ -11,6 +11,7 @@
 
 namespace facescan {
 
+/// 打开数据库并确保基础表、轻量迁移和种子数据就绪。
 Database::Database(const std::string& filePath) : db_(NULL)
 {
     ensureDirectory(parentDirectory(filePath));
@@ -54,6 +55,7 @@ Database::Database(const std::string& filePath) : db_(NULL)
     seed();
 }
 
+/// 关闭 SQLite 连接。
 Database::~Database()
 {
     if (db_) {
@@ -61,6 +63,7 @@ Database::~Database()
     }
 }
 
+/// 按关键字和日期筛选患者，并带出最近订单编号。
 std::vector<Patient> Database::patients(const std::string& keyword, const std::string& date)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -101,6 +104,7 @@ std::vector<Patient> Database::patients(const std::string& keyword, const std::s
     return out;
 }
 
+/// 根据患者主键读取完整患者信息。
 Patient Database::patientById(int id)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -117,6 +121,7 @@ Patient Database::patientById(int id)
     return p;
 }
 
+/// 创建患者并自动创建首个订单。
 int Database::createPatient(const Patient& patient)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -131,6 +136,7 @@ int Database::createPatient(const Patient& patient)
     return id;
 }
 
+/// 删除患者及其关联订单、扫描记录。
 bool Database::deletePatient(int id)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -156,6 +162,7 @@ bool Database::deletePatient(int id)
     return changed;
 }
 
+/// 更新患者可编辑字段。
 bool Database::updatePatient(int id, const Patient& patient)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -173,12 +180,14 @@ bool Database::updatePatient(int id, const Patient& patient)
     return changed;
 }
 
+/// 为患者创建新订单。
 int Database::createOrder(int patientId)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     return createOrderUnlocked(patientId);
 }
 
+/// 删除订单及关联扫描记录。
 bool Database::deleteOrder(int orderId)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -199,6 +208,7 @@ bool Database::deleteOrder(int orderId)
     return changed;
 }
 
+/// 根据订单查找所属患者。
 Patient Database::patientByOrderId(int orderId)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -215,6 +225,7 @@ Patient Database::patientByOrderId(int orderId)
     return p;
 }
 
+/// 读取订单业务编号。
 std::string Database::orderNo(int orderId)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -228,6 +239,7 @@ std::string Database::orderNo(int orderId)
     return value;
 }
 
+/// 将文件系统扫描结果同步到数据库，删除已不存在的患者和订单。
 void Database::syncDataRoot(const std::vector<DataRootPatient>& patients)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -326,6 +338,7 @@ void Database::syncDataRoot(const std::vector<DataRootPatient>& patients)
     }
 }
 
+/// 查询订单最近一条可用预览路径，优先返回 PLY 路径。
 std::string Database::latestPreviewPathForOrder(int orderId)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -341,6 +354,7 @@ std::string Database::latestPreviewPathForOrder(int orderId)
     return value;
 }
 
+/// 查询订单最近生成的 PLY 文件路径。
 std::string Database::latestPlyPathForOrder(int orderId)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -357,6 +371,7 @@ std::string Database::latestPlyPathForOrder(int orderId)
     return value;
 }
 
+/// 查询订单最近的图片预览路径。
 std::string Database::latestPreviewImagePathForOrder(int orderId)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -373,6 +388,7 @@ std::string Database::latestPreviewImagePathForOrder(int orderId)
     return value;
 }
 
+/// 查询订单最近一次采集的图片路径集合。
 std::vector<std::string> Database::latestImagePathsForOrder(int orderId, int limit)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -412,6 +428,7 @@ std::vector<std::string> Database::latestImagePathsForOrder(int orderId, int lim
     return paths;
 }
 
+/// 查询患者订单摘要，包含扫描数量、预览和点云路径。
 std::vector<Order> Database::ordersForPatient(int patientId)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -442,6 +459,7 @@ std::vector<Order> Database::ordersForPatient(int patientId)
     return orders;
 }
 
+/// 查询患者最近订单；没有订单时自动创建。
 int Database::latestOrderId(int patientId)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -458,6 +476,7 @@ int Database::latestOrderId(int patientId)
     return id;
 }
 
+/// 用新采图结果替换订单旧扫描记录。
 void Database::replaceOrderCapture(int orderId, const std::vector<std::string>& imagePaths)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -480,6 +499,7 @@ void Database::replaceOrderCapture(int orderId, const std::vector<std::string>& 
     sqlite3_finalize(stmt);
 }
 
+/// 写入或更新订单点云生成结果。
 void Database::setPointCloudResult(int orderId, const std::string& plyPath, const std::string& previewPath)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -508,6 +528,7 @@ void Database::setPointCloudResult(int orderId, const std::string& plyPath, cons
     }
 }
 
+/// 迁移数据目录后替换扫描记录中的路径前缀。
 void Database::replaceStoredPathPrefix(const std::string& oldPrefix, const std::string& newPrefix)
 {
     if (oldPrefix.empty() || newPrefix.empty() || oldPrefix == newPrefix) {
@@ -536,6 +557,7 @@ void Database::replaceStoredPathPrefix(const std::string& oldPrefix, const std::
     sqlite3_finalize(stmt);
 }
 
+/// 查询患者所有扫描记录。
 std::vector<ScanResult> Database::scansForPatient(int patientId)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -559,6 +581,7 @@ std::vector<ScanResult> Database::scansForPatient(int patientId)
     return scans;
 }
 
+/// 执行 SQL 语句并在失败时抛出 SQLite 错误。
 void Database::exec(const std::string& sql)
 {
     char* err = NULL;
@@ -569,6 +592,7 @@ void Database::exec(const std::string& sql)
     }
 }
 
+/// 执行 SQL 语句并忽略失败，适用于兼容性清理和回滚。
 void Database::execIgnoreError(const std::string& sql)
 {
     char* err = NULL;
@@ -577,6 +601,7 @@ void Database::execIgnoreError(const std::string& sql)
     }
 }
 
+/// 如果字段不存在则为表追加字段。
 void Database::addColumnIfMissing(const std::string& table, const std::string& column, const std::string& type)
 {
     sqlite3_stmt* stmt = prepare("PRAGMA table_info(" + table + ")");
@@ -593,6 +618,7 @@ void Database::addColumnIfMissing(const std::string& table, const std::string& c
     }
 }
 
+/// 预编译 SQLite 语句。
 sqlite3_stmt* Database::prepare(const std::string& sql)
 {
     sqlite3_stmt* stmt = NULL;
@@ -602,6 +628,7 @@ sqlite3_stmt* Database::prepare(const std::string& sql)
     return stmt;
 }
 
+/// 执行 prepared statement 并要求完成。
 void Database::stepDone(sqlite3_stmt* stmt)
 {
     if (sqlite3_step(stmt) != SQLITE_DONE) {
@@ -609,12 +636,14 @@ void Database::stepDone(sqlite3_stmt* stmt)
     }
 }
 
+/// 读取 SQLite 文本列，NULL 转为空字符串。
 std::string Database::columnText(sqlite3_stmt* stmt, int column)
 {
     const unsigned char* text = sqlite3_column_text(stmt, column);
     return text ? reinterpret_cast<const char*>(text) : "";
 }
 
+/// 从当前结果行映射患者对象。
 Patient Database::readPatient(sqlite3_stmt* stmt)
 {
     Patient p;
@@ -631,6 +660,7 @@ Patient Database::readPatient(sqlite3_stmt* stmt)
     return p;
 }
 
+/// 绑定患者插入字段。
 void Database::bindPatientFields(sqlite3_stmt* stmt, const Patient& patient)
 {
     sqlite3_bind_text(stmt, 1, patient.patientNo.c_str(), -1, SQLITE_TRANSIENT);
@@ -643,6 +673,7 @@ void Database::bindPatientFields(sqlite3_stmt* stmt, const Patient& patient)
     sqlite3_bind_text(stmt, 8, patient.createdAt.c_str(), -1, SQLITE_TRANSIENT);
 }
 
+/// 将整数转换为字符串。
 std::string Database::toString(int value)
 {
     std::ostringstream os;
@@ -650,6 +681,7 @@ std::string Database::toString(int value)
     return os.str();
 }
 
+/// 将路径数组编码为换行分隔文本。
 std::string Database::joinLines(const std::vector<std::string>& values)
 {
     std::ostringstream os;
@@ -662,6 +694,7 @@ std::string Database::joinLines(const std::vector<std::string>& values)
     return os.str();
 }
 
+/// 将换行分隔文本解码为路径数组。
 std::vector<std::string> Database::splitLines(const std::string& value)
 {
     std::vector<std::string> out;
@@ -675,6 +708,7 @@ std::vector<std::string> Database::splitLines(const std::string& value)
     return out;
 }
 
+/// 按患者编号插入或更新由数据目录扫描到的患者。
 int Database::upsertPatientUnlocked(const DataRootPatient& patient)
 {
     sqlite3_stmt* findStmt = prepare("SELECT id FROM patient WHERE patient_no=?");
@@ -714,6 +748,7 @@ int Database::upsertPatientUnlocked(const DataRootPatient& patient)
     return static_cast<int>(sqlite3_last_insert_rowid(db_));
 }
 
+/// 按订单编号插入或更新由数据目录扫描到的订单。
 int Database::upsertOrderUnlocked(int patientId, const DataRootOrder& order)
 {
     sqlite3_stmt* findStmt = prepare("SELECT id FROM orders WHERE patient_id=? AND order_no=?");
@@ -749,6 +784,7 @@ int Database::upsertOrderUnlocked(int patientId, const DataRootOrder& order)
     return static_cast<int>(sqlite3_last_insert_rowid(db_));
 }
 
+/// 用数据目录扫描结果重建订单扫描记录。
 void Database::replaceOrderScanUnlocked(int orderId, const DataRootOrder& order)
 {
     sqlite3_stmt* deleteStmt = prepare("DELETE FROM scan_result WHERE order_id=?");
@@ -780,6 +816,7 @@ void Database::replaceOrderScanUnlocked(int orderId, const DataRootOrder& order)
     sqlite3_finalize(insertStmt);
 }
 
+/// 创建订单并生成“患者编号-序号”的订单编号。
 int Database::createOrderUnlocked(int patientId)
 {
     const std::string patientNo = patientNoUnlocked(patientId);
@@ -797,6 +834,7 @@ int Database::createOrderUnlocked(int patientId)
     return static_cast<int>(sqlite3_last_insert_rowid(db_));
 }
 
+/// 读取患者编号，缺失时生成临时编号兜底。
 std::string Database::patientNoUnlocked(int patientId)
 {
     sqlite3_stmt* stmt = prepare("SELECT patient_no FROM patient WHERE id=?");
@@ -809,6 +847,7 @@ std::string Database::patientNoUnlocked(int patientId)
     return value.empty() ? ("P" + stampTextMs()) : value;
 }
 
+/// 计算患者下一个订单序号。
 int Database::nextOrderSequenceUnlocked(int patientId)
 {
     sqlite3_stmt* stmt = prepare("SELECT COUNT(*) FROM orders WHERE patient_id=?");
@@ -821,6 +860,7 @@ int Database::nextOrderSequenceUnlocked(int patientId)
     return count + 1;
 }
 
+/// 基于毫秒时间戳生成不重复患者编号。
 std::string Database::generatePatientNoUnlocked()
 {
     for (int suffix = 0; suffix < 100; ++suffix) {
@@ -842,12 +882,14 @@ std::string Database::generatePatientNoUnlocked()
     return "P" + stampTextMs();
 }
 
+/// 删除失去外键引用的扫描和订单记录。
 void Database::cleanupOrphansUnlocked()
 {
     execIgnoreError("DELETE FROM scan_result WHERE order_id NOT IN (SELECT id FROM orders);");
     execIgnoreError("DELETE FROM orders WHERE patient_id NOT IN (SELECT id FROM patient);");
 }
 
+/// 空数据库首次启动时写入一条演示患者。
 void Database::seed()
 {
     sqlite3_stmt* stmt = prepare("SELECT COUNT(*) FROM patient");
