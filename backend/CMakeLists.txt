@@ -87,6 +87,7 @@ if(BUILD_TESTING)
     add_executable(facescan_tests
         tests/app_test.cpp
         tests/camera_manager_test.cpp
+        tests/color_point_cloud_sdk_test.cpp
         tests/database_test.cpp
         tests/json_utils_test.cpp
     )

@@ -76,6 +76,39 @@ struct ImageSource {
     }
 };
 
+/// 黑白 IR 图像，像素归一化到 0..1 后用于双目匹配。
+struct GrayImage {
+    std::string path;
+    int width;
+    int height;
+    int maxValue;
+    std::vector<double> pixels;
+
+    GrayImage() : width(0), height(0), maxValue(0) {}
+
+    bool valid() const
+    {
+        return width > 0 && height > 0 && pixels.size() == static_cast<std::size_t>(width * height);
+    }
+
+    double at(int x, int y) const
+    {
+        const int cx = std::max(0, std::min(width - 1, x));
+        const int cy = std::max(0, std::min(height - 1, y));
+        return pixels[static_cast<std::size_t>(cy * width + cx)];
+    }
+};
+
+/// 同步采集中用于重建的三类输入：左 IR、右 IR、彩色纹理。
+struct StereoCaptureInput {
+    bool ok;
+    std::string colorPath;
+    std::string leftIrPath;
+    std::string rightIrPath;
+
+    StereoCaptureInput() : ok(false) {}
+};
+
 /// 将整数限制在 8 位颜色通道范围。
 int clampByte(int value)
 {
@@ -281,6 +314,118 @@ ImageSource loadImageSource(const std::string& path)
     return source;
 }
 
+/// 返回文件名，不包含目录。
+std::string fileNameOnly(const std::string& path)
+{
+    const std::size_t pos = path.find_last_of("/\\");
+    return pos == std::string::npos ? path : path.substr(pos + 1);
+}
+
+/// 去掉最后一个扩展名。
+std::string removeExtension(const std::string& name)
+{
+    const std::size_t pos = name.find_last_of('.');
+    return pos == std::string::npos ? name : name.substr(0, pos);
+}
+
+/// 判断字符串是否以指定后缀结尾。
+bool endsWith(const std::string& value, const std::string& suffix)
+{
+    return value.size() >= suffix.size()
+        && value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+/// 从四张临时纹理路径推导同一订单目录中的同步采集三件套。
+StereoCaptureInput findStereoCaptureInput(const std::vector<std::string>& imagePaths)
+{
+    const char* suffixes[] = { "_left", "_front", "_right", "_bottom", "_color" };
+    for (std::size_t i = 0; i < imagePaths.size(); ++i) {
+        const std::string folder = parentDirectory(imagePaths[i]);
+        std::string stem = removeExtension(fileNameOnly(imagePaths[i]));
+        for (std::size_t suffixIndex = 0; suffixIndex < sizeof(suffixes) / sizeof(suffixes[0]); ++suffixIndex) {
+            const std::string suffix = suffixes[suffixIndex];
+            if (endsWith(stem, suffix)) {
+                stem = stem.substr(0, stem.size() - suffix.size());
+                break;
+            }
+        }
+        if (folder.empty() || stem.empty()) {
+            continue;
+        }
+        StereoCaptureInput input;
+        input.colorPath = folder + "/" + stem + "_color.ppm";
+        input.leftIrPath = folder + "/" + stem + "_left_ir.pgm";
+        input.rightIrPath = folder + "/" + stem + "_right_ir.pgm";
+        input.ok = pathExists(input.colorPath) && pathExists(input.leftIrPath) && pathExists(input.rightIrPath);
+        if (input.ok) {
+            return input;
+        }
+    }
+    return StereoCaptureInput();
+}
+
+/// 加载 P2/P5 PGM 图像；P5 16 位按 PGM 规范使用 big-endian。
+bool loadPgm(const std::string& path, GrayImage* image)
+{
+    if (!image) {
+        return false;
+    }
+    std::ifstream file(path.c_str(), std::ios::binary);
+    if (!file) {
+        return false;
+    }
+    const std::string magic = nextToken(file);
+    if (magic != "P2" && magic != "P5") {
+        return false;
+    }
+    const int width = std::atoi(nextToken(file).c_str());
+    const int height = std::atoi(nextToken(file).c_str());
+    const int maxValue = std::atoi(nextToken(file).c_str());
+    if (width <= 0 || height <= 0 || maxValue <= 0) {
+        return false;
+    }
+    image->path = path;
+    image->width = width;
+    image->height = height;
+    image->maxValue = maxValue;
+    image->pixels.clear();
+    image->pixels.reserve(static_cast<std::size_t>(width * height));
+
+    if (magic == "P2") {
+        for (int i = 0; i < width * height; ++i) {
+            const int value = std::atoi(nextToken(file).c_str());
+            image->pixels.push_back(clampDouble(static_cast<double>(value) / maxValue, 0.0, 1.0));
+        }
+        return image->valid();
+    }
+
+    file.get();
+    if (maxValue <= 255) {
+        for (int i = 0; i < width * height; ++i) {
+            unsigned char value = 0;
+            file.read(reinterpret_cast<char*>(&value), 1);
+            if (!file) {
+                image->pixels.clear();
+                return false;
+            }
+            image->pixels.push_back(static_cast<double>(value) / maxValue);
+        }
+        return image->valid();
+    }
+
+    for (int i = 0; i < width * height; ++i) {
+        unsigned char bytes[2] = { 0, 0 };
+        file.read(reinterpret_cast<char*>(bytes), 2);
+        if (!file) {
+            image->pixels.clear();
+            return false;
+        }
+        const int value = (static_cast<int>(bytes[0]) << 8) | static_cast<int>(bytes[1]);
+        image->pixels.push_back(clampDouble(static_cast<double>(value) / maxValue, 0.0, 1.0));
+    }
+    return image->valid();
+}
+
 /// 椭圆面部轮廓掩膜，用于过滤正面/侧面采样点。
 double faceMask(double a, double b)
 {
@@ -372,6 +517,150 @@ bool writePly(const std::string& path, const std::vector<Point>& points)
     return true;
 }
 
+/// 计算两个小窗口的绝对差，用于已校正双目散斑图的水平匹配。
+double patchCost(const GrayImage& left, const GrayImage& right, int lx, int rx, int y, int radius)
+{
+    double cost = 0.0;
+    int count = 0;
+    for (int dy = -radius; dy <= radius; ++dy) {
+        for (int dx = -radius; dx <= radius; ++dx) {
+            cost += std::fabs(left.at(lx + dx, y + dy) - right.at(rx + dx, y + dy));
+            ++count;
+        }
+    }
+    return count > 0 ? cost / count : std::numeric_limits<double>::max();
+}
+
+/// 在右 IR 图中沿同一行搜索左图像素的最佳视差。
+bool matchDisparity(
+    const GrayImage& left,
+    const GrayImage& right,
+    int x,
+    int y,
+    int minDisparity,
+    int maxDisparity,
+    int radius,
+    double* disparity)
+{
+    if (!disparity) {
+        return false;
+    }
+    double bestCost = std::numeric_limits<double>::max();
+    double secondCost = std::numeric_limits<double>::max();
+    int bestDisparity = 0;
+    for (int d = minDisparity; d <= maxDisparity; ++d) {
+        const int rx = x - d;
+        if (rx - radius < 0 || rx + radius >= right.width) {
+            continue;
+        }
+        const double cost = patchCost(left, right, x, rx, y, radius);
+        if (cost < bestCost) {
+            secondCost = bestCost;
+            bestCost = cost;
+            bestDisparity = d;
+        } else if (cost < secondCost) {
+            secondCost = cost;
+        }
+    }
+    if (bestDisparity <= 0 || bestCost > 0.22) {
+        return false;
+    }
+    if (secondCost < std::numeric_limits<double>::max() && secondCost / std::max(bestCost, 0.0001) < 1.015) {
+        return false;
+    }
+    *disparity = static_cast<double>(bestDisparity);
+    return true;
+}
+
+/// 使用左右黑白散斑图恢复几何，再从彩色图按同一归一化坐标采样纹理。
+PointCloudBuildResult reconstructFromStereoIr(
+    const StereoCaptureInput& input,
+    const PointCloudOptions& options,
+    const std::string& outputRoot)
+{
+    PointCloudBuildResult result;
+    result.sourceImages.push_back(input.leftIrPath);
+    result.sourceImages.push_back(input.rightIrPath);
+    result.sourceImages.push_back(input.colorPath);
+
+    GrayImage left;
+    GrayImage right;
+    if (!loadPgm(input.leftIrPath, &left) || !loadPgm(input.rightIrPath, &right)) {
+        result.message = "Cannot read stereo IR PGM images";
+        return result;
+    }
+    if (left.width != right.width || left.height != right.height) {
+        result.message = "Stereo IR image sizes do not match";
+        return result;
+    }
+
+    const ImageSource color = loadImageSource(input.colorPath);
+    const int columns = std::max(16, std::min(240, options.columns));
+    const int rows = std::max(16, std::min(240, options.rows));
+    const int radius = 3;
+    const int minDisparity = 2;
+    const int maxDisparity = std::max(minDisparity + 1, std::min(96, left.width / 4));
+    const int x0 = maxDisparity + radius + 1;
+    const int x1 = left.width - radius - 2;
+    const int y0 = radius + 1;
+    const int y1 = left.height - radius - 2;
+    if (x1 <= x0 || y1 <= y0) {
+        result.message = "Stereo IR images are too small";
+        return result;
+    }
+
+    const double focalPx = std::max(left.width, left.height) * 0.90;
+    const double baselineMm = 55.0;
+    const double cx = (left.width - 1) * 0.5;
+    const double cy = (left.height - 1) * 0.5;
+    std::vector<Point> points;
+    points.reserve(static_cast<std::size_t>(columns * rows));
+
+    for (int row = 0; row < rows; ++row) {
+        const double tv = rows == 1 ? 0.0 : static_cast<double>(row) / static_cast<double>(rows - 1);
+        const int y = static_cast<int>(y0 + tv * (y1 - y0));
+        for (int col = 0; col < columns; ++col) {
+            const double tu = columns == 1 ? 0.0 : static_cast<double>(col) / static_cast<double>(columns - 1);
+            const int x = static_cast<int>(x0 + tu * (x1 - x0));
+            double disparity = 0.0;
+            if (!matchDisparity(left, right, x, y, minDisparity, maxDisparity, radius, &disparity)) {
+                continue;
+            }
+
+            const double z = clampDouble((baselineMm * focalPx) / disparity, 180.0, 1800.0);
+            const double u = static_cast<double>(x) / static_cast<double>(left.width - 1);
+            const double v = static_cast<double>(y) / static_cast<double>(left.height - 1);
+            Point p;
+            p.x = (static_cast<double>(x) - cx) * z / focalPx;
+            p.y = -(static_cast<double>(y) - cy) * z / focalPx;
+            p.z = z;
+            p.color = color.sample(u, v);
+            points.push_back(p);
+            addBounds(&result, p);
+            ++result.pointCount;
+        }
+    }
+
+    if (points.empty()) {
+        result.message = "Stereo IR reconstruction produced no points";
+        return result;
+    }
+
+    const std::string prefix = options.namePrefix.empty() ? "pointcloud" : options.namePrefix;
+    const std::string plyFileName = options.outputFileName.empty() ? (prefix + "_" + stampTextMs() + ".ply") : options.outputFileName;
+    const std::string plyPath = outputRoot + "/" + plyFileName;
+    if (!writePly(plyPath, points)) {
+        result.message = "Cannot write PLY file";
+        result.pointCount = 0;
+        return result;
+    }
+
+    result.ok = true;
+    result.message = "ok";
+    result.plyPath = plyPath;
+    return result;
+}
+
 } // namespace
 
 /// 指定输出根目录，空路径时使用默认点云目录。
@@ -380,7 +669,7 @@ ColorPointCloudSdk::ColorPointCloudSdk(const std::string& outputRoot)
 {
 }
 
-/// 按多视角源图像采样并生成 MVP 版本的彩色 PLY 点云。
+/// 优先用同步采集的左右 IR 散斑图重建几何，并用彩色图贴纹理；没有硬件帧时回退到 mock 采样。
 PointCloudBuildResult ColorPointCloudSdk::reconstruct(
     const std::vector<std::string>& imagePaths,
     const PointCloudOptions& options) const
@@ -390,6 +679,11 @@ PointCloudBuildResult ColorPointCloudSdk::reconstruct(
     if (imagePaths.empty()) {
         result.message = "No source images";
         return result;
+    }
+
+    const StereoCaptureInput stereoInput = findStereoCaptureInput(imagePaths);
+    if (stereoInput.ok) {
+        return reconstructFromStereoIr(stereoInput, options, outputRoot_);
     }
 
     const int columns = std::max(16, std::min(240, options.columns));
