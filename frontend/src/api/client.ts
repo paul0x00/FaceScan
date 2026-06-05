@@ -24,7 +24,7 @@ export async function login(username: string, password: string) {
 }
 
 /** 查询患者列表。 */
-export async function fetchPatients(params: { keyword?: string; date?: string }) {
+export async function fetchPatients(params: { keyword?: string; date?: string; startDate?: string; endDate?: string }) {
   const { data } = await api.get<{ items: Patient[] }>('/patients', { params })
   return data.items
 }

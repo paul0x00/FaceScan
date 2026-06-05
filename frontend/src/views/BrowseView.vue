@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { CalendarDays, CirclePlus, ClipboardList, Edit, FolderOpen, RotateCcw, Search, Stethoscope, Trash2, UserPlus, UserRound } from 'lucide-vue-next'
+import { CalendarDays, ChevronDown, CirclePlus, ClipboardList, Edit, FolderOpen, RotateCcw, Search, Stethoscope, Trash2, UserPlus, UserRound } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { createOrder, deleteOrder, deletePatient, fetchOrders, imageFileUrl, openOrderFolder } from '../api/client'
 import { usePatientStore } from '../stores/patients'
@@ -14,7 +14,16 @@ const store = usePatientStore()
 /** 患者检索条件。 */
 const filters = reactive({
   keyword: '',
-  date: ''
+  startDate: '',
+  endDate: ''
+})
+/** 日期范围弹层是否展开。 */
+const datePanelOpen = ref(false)
+/** 日期范围临时选择，点击应用后才写入检索条件。 */
+const dateDraft = reactive({
+  startDate: '',
+  endDate: '',
+  preset: ''
 })
 /** 当前激活的患者主键。 */
 const activeId = ref(0)
@@ -27,6 +36,18 @@ const ordersLoading = ref(false)
 /** 缩略图加载失败的患者集合。 */
 const brokenThumbnails = ref<Record<number, boolean>>({})
 
+/** 浏览页日期快捷范围。 */
+const datePresets = [
+  { key: 'today', label: '今天' },
+  { key: 'yesterday', label: '昨天' },
+  { key: 'last24h', label: '近24小时' },
+  { key: 'last7d', label: '近 7 天' },
+  { key: 'last14d', label: '近 14 天' },
+  { key: 'last30d', label: '近 30 天' },
+  { key: 'thisMonth', label: '本月' },
+  { key: 'lastMonth', label: '上月' }
+]
+
 /** 当前选中患者；未选中时回退到第一位患者。 */
 const selected = computed(() => store.patients.find((item) => item.id === activeId.value) ?? store.patients[0])
 
@@ -35,6 +56,14 @@ onMounted(() => loadPatientDashboard(true))
 /** 切换患者时自动刷新右侧订单列表。 */
 watch(activeId, () => {
   loadOrders()
+})
+
+/** 日期弹层展开时同步当前已应用的筛选值。 */
+watch(datePanelOpen, (visible) => {
+  if (!visible) return
+  dateDraft.startDate = filters.startDate
+  dateDraft.endDate = filters.endDate
+  dateDraft.preset = matchedPreset(filters.startDate, filters.endDate)
 })
 
 /** 按当前过滤条件搜索患者并刷新订单列表。 */
@@ -50,14 +79,23 @@ async function search() {
 /** 清空过滤条件并重新搜索。 */
 async function reset() {
   filters.keyword = ''
-  filters.date = ''
+  filters.startDate = ''
+  filters.endDate = ''
+  dateDraft.startDate = ''
+  dateDraft.endDate = ''
+  dateDraft.preset = ''
+  datePanelOpen.value = false
   await search()
 }
 
 /** 加载患者和订单数据；初始化时保留仍存在的当前选中患者。 */
 async function loadPatientDashboard(keepCurrent: boolean) {
   const previousId = activeId.value
-  await store.load(filters)
+  await store.load({
+    keyword: filters.keyword,
+    startDate: filters.startDate,
+    endDate: filters.endDate
+  })
   const nextId = keepCurrent && store.patients.some((patient) => patient.id === previousId)
     ? previousId
     : store.patients[0]?.id ?? 0
@@ -81,6 +119,104 @@ function openOrderBasic(patientId: number, orderId: number) {
 /** 打开指定患者订单的拍摄页。 */
 function openShoot(patientId: number, orderId: number) {
   router.push(`/shoot/${patientId}?orderId=${orderId}`)
+}
+
+/** 将日期格式化为后端查询使用的 YYYY-MM-DD。 */
+function formatDate(value: Date) {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/** 返回一个去掉时分秒的本地日期。 */
+function startOfDay(value = new Date()) {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate())
+}
+
+/** 在本地日期上增减天数。 */
+function addDays(value: Date, days: number) {
+  const next = new Date(value)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
+/** 根据快捷项计算起止日期。 */
+function rangeForPreset(key: string) {
+  const today = startOfDay()
+  if (key === 'today' || key === 'last24h') {
+    return { startDate: formatDate(today), endDate: formatDate(today) }
+  }
+  if (key === 'yesterday') {
+    const yesterday = addDays(today, -1)
+    return { startDate: formatDate(yesterday), endDate: formatDate(yesterday) }
+  }
+  if (key === 'last7d') {
+    return { startDate: formatDate(addDays(today, -6)), endDate: formatDate(today) }
+  }
+  if (key === 'last14d') {
+    return { startDate: formatDate(addDays(today, -13)), endDate: formatDate(today) }
+  }
+  if (key === 'last30d') {
+    return { startDate: formatDate(addDays(today, -29)), endDate: formatDate(today) }
+  }
+  if (key === 'thisMonth') {
+    return { startDate: formatDate(new Date(today.getFullYear(), today.getMonth(), 1)), endDate: formatDate(today) }
+  }
+  if (key === 'lastMonth') {
+    const firstDay = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+    const lastDay = new Date(today.getFullYear(), today.getMonth(), 0)
+    return { startDate: formatDate(firstDay), endDate: formatDate(lastDay) }
+  }
+  return { startDate: '', endDate: '' }
+}
+
+/** 选择快捷日期范围。 */
+function chooseDatePreset(key: string) {
+  const range = rangeForPreset(key)
+  dateDraft.startDate = range.startDate
+  dateDraft.endDate = range.endDate
+  dateDraft.preset = key
+}
+
+/** 自定义日期变更后清除快捷项高亮。 */
+function handleDraftDateChange() {
+  dateDraft.preset = matchedPreset(dateDraft.startDate, dateDraft.endDate)
+}
+
+/** 应用日期范围筛选。 */
+async function applyDateRange() {
+  if (dateDraft.startDate && dateDraft.endDate && dateDraft.startDate > dateDraft.endDate) {
+    const previousStart = dateDraft.startDate
+    dateDraft.startDate = dateDraft.endDate
+    dateDraft.endDate = previousStart
+  }
+  filters.startDate = dateDraft.startDate
+  filters.endDate = dateDraft.endDate
+  datePanelOpen.value = false
+  await search()
+}
+
+/** 日期触发器展示文案。 */
+const dateRangeLabel = computed(() => {
+  const preset = matchedPreset(filters.startDate, filters.endDate)
+  if (preset) {
+    return datePresets.find((item) => item.key === preset)?.label ?? '创建日期'
+  }
+  if (filters.startDate && filters.endDate) {
+    return filters.startDate === filters.endDate ? filters.startDate : `${filters.startDate} - ${filters.endDate}`
+  }
+  if (filters.startDate) return `${filters.startDate} 起`
+  if (filters.endDate) return `${filters.endDate} 止`
+  return '创建日期'
+})
+
+/** 查找与当前范围完全一致的快捷项。 */
+function matchedPreset(startDate: string, endDate: string) {
+  return datePresets.find((item) => {
+    const range = rangeForPreset(item.key)
+    return range.startDate === startDate && range.endDate === endDate
+  })?.key ?? ''
 }
 
 /** 返回订单点云预览图 URL；未生成点云时返回空。 */
@@ -190,8 +326,70 @@ async function revealOrderFolder(order: Order) {
 
     <section class="browse-toolbar">
       <el-input v-model="filters.keyword" class="keyword-input" placeholder="患者编号 / 姓名 / 医生" clearable />
-      <el-date-picker v-model="filters.date" class="date-input" type="date" value-format="YYYY-MM-DD" placeholder="创建日期" />
-      <el-button class="soft-btn" :loading="searching" @click="search">
+      <el-popover
+        v-model:visible="datePanelOpen"
+        popper-class="date-range-popper"
+        placement="bottom-start"
+        :width="430"
+        persistent
+        trigger="click"
+      >
+        <template #reference>
+          <button
+            class="date-range-trigger"
+            :class="{ active: datePanelOpen || filters.startDate || filters.endDate }"
+            type="button"
+          >
+            <CalendarDays :size="18" />
+            <span>{{ dateRangeLabel }}</span>
+            <ChevronDown :size="17" class="date-chevron" :class="{ open: datePanelOpen }" />
+          </button>
+        </template>
+        <section class="date-range-panel">
+          <div class="date-preset-grid">
+            <button
+              v-for="preset in datePresets"
+              :key="preset.key"
+              class="date-preset"
+              :class="{ selected: dateDraft.preset === preset.key }"
+              type="button"
+              @click="chooseDatePreset(preset.key)"
+            >
+              {{ preset.label }}
+            </button>
+          </div>
+          <div class="date-range-divider" />
+          <div class="date-range-fields">
+            <label>
+              <span>开始日期</span>
+              <el-date-picker
+                v-model="dateDraft.startDate"
+                class="range-date-input"
+                type="date"
+                value-format="YYYY-MM-DD"
+                placeholder="开始日期"
+                @change="handleDraftDateChange"
+              />
+            </label>
+            <span class="date-range-arrow">→</span>
+            <label>
+              <span>结束日期</span>
+              <el-date-picker
+                v-model="dateDraft.endDate"
+                class="range-date-input"
+                type="date"
+                value-format="YYYY-MM-DD"
+                placeholder="结束日期"
+                @change="handleDraftDateChange"
+              />
+            </label>
+          </div>
+          <footer class="date-range-actions">
+            <button class="primary-btn date-apply-btn" type="button" @click="applyDateRange">应用</button>
+          </footer>
+        </section>
+      </el-popover>
+      <el-button class="soft-btn" :disabled="searching" @click="search">
         <Search :size="17" />搜索
       </el-button>
       <el-button class="soft-btn" :disabled="searching" @click="reset">

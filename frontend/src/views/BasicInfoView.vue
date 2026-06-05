@@ -119,12 +119,16 @@ async function submit() {
   try {
     if (id.value) {
       await updatePatient(id.value, form)
+      await store.load()
+      store.selectedId = id.value
       ElMessage.success('患者信息已更新')
       const orderQuery = routeOrderId.value ? `?orderId=${routeOrderId.value}` : ''
       router.push(`/shoot/${id.value}${orderQuery}`)
       return
     }
     const created = await createPatient(form)
+    await store.load()
+    store.selectedId = created.id
     ElMessage.success(`患者 ${created.patientNo} 已创建，订单 ${created.orderNo} 已生成`)
     router.push(`/shoot/${created.id}?orderId=${created.orderId}`)
   } finally {

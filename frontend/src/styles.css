@@ -810,23 +810,166 @@ button:disabled,
 }
 
 .keyword-input {
+  flex: 0 0 260px;
   width: 260px;
 }
 
-.date-input {
-  width: 166px;
+.date-range-trigger {
+  flex: 0 0 220px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: 220px;
+  height: 38px;
+  padding: 0 12px;
+  color: #28323d;
+  font-size: 15px;
+  font-weight: 900;
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  cursor: pointer;
 }
 
-.date-input.el-date-editor.el-input {
-  height: 38px;
+.date-range-trigger span {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.date-input .el-input__wrapper {
-  height: 38px;
-  min-height: 38px;
+.date-range-trigger:hover,
+.date-range-trigger.active {
+  color: var(--teal);
+  background: #f4fbfb;
+  border-color: #83bfc1;
+  box-shadow: 0 0 0 3px rgba(8, 123, 125, 0.12), var(--shadow-soft);
+}
+
+.date-chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #8493a3;
+}
+
+.date-chevron.open {
+  transform: rotate(180deg);
+}
+
+.date-range-popper.el-popper {
+  padding: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.date-range-panel {
+  width: 430px;
+  color: var(--text);
+}
+
+.date-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  padding: 16px 18px 14px;
+}
+
+.date-preset {
+  height: 36px;
+  color: #465565;
+  font-size: 15px;
+  font-weight: 900;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.date-preset:hover {
+  color: var(--blue);
+  background: #f3f8fe;
+  border-color: #c6dbf0;
+}
+
+.date-preset.selected {
+  color: var(--teal-dark);
+  background: #dff4f4;
+  border-color: #96ccce;
+}
+
+.date-range-divider {
+  height: 1px;
+  background: var(--line);
+}
+
+.date-range-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr);
+  gap: 6px;
+  align-items: end;
+  padding: 14px 18px 8px;
+}
+
+.date-range-fields label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.range-date-input.el-date-editor.el-input {
+  width: 100%;
+  height: 36px;
+}
+
+.range-date-input .el-input__wrapper {
+  height: 36px;
+  min-height: 36px;
+  background: var(--surface-soft);
+  border-radius: 7px;
+  box-shadow: 0 0 0 1px var(--line) inset;
+}
+
+.range-date-input .el-input__wrapper:hover,
+.range-date-input .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px #9fc1e5 inset, 0 0 0 3px rgba(47, 112, 183, 0.12);
+}
+
+.date-range-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  color: #8695a5;
+  font-size: 20px;
+}
+
+.date-range-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 18px 16px;
+}
+
+.date-apply-btn {
+  min-width: 78px;
+}
+
+.browse-toolbar .soft-btn,
+.browse-toolbar .soft-btn.el-button {
+  flex: 0 0 88px;
+  width: 88px;
+  min-width: 88px;
 }
 
 .new-patient {
+  flex: 0 0 124px;
+  width: 124px;
+  min-width: 124px;
   margin-left: auto;
 }
 

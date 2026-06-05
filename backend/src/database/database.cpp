@@ -64,7 +64,11 @@ Database::~Database()
 }
 
 /// 按关键字和日期筛选患者，并带出最近订单编号。
-std::vector<Patient> Database::patients(const std::string& keyword, const std::string& date)
+std::vector<Patient> Database::patients(
+    const std::string& keyword,
+    const std::string& date,
+    const std::string& startDate,
+    const std::string& endDate)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     std::vector<Patient> out;
@@ -84,7 +88,16 @@ std::vector<Patient> Database::patients(const std::string& keyword, const std::s
         params.push_back(like);
         params.push_back(like);
     }
-    if (!date.empty()) {
+    if (!startDate.empty() || !endDate.empty()) {
+        if (!startDate.empty()) {
+            clauses.push_back("date(created_at)>=date(?)");
+            params.push_back(startDate);
+        }
+        if (!endDate.empty()) {
+            clauses.push_back("date(created_at)<=date(?)");
+            params.push_back(endDate);
+        }
+    } else if (!date.empty()) {
         clauses.push_back("date(created_at)=date(?)");
         params.push_back(date);
     }

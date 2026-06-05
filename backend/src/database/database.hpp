@@ -18,8 +18,12 @@ public:
     /// 关闭 SQLite 连接。
     ~Database();
 
-    /// 按关键字和创建日期查询患者列表。
-    std::vector<Patient> patients(const std::string& keyword, const std::string& date);
+    /// 按关键字和创建日期或日期范围查询患者列表。
+    std::vector<Patient> patients(
+        const std::string& keyword,
+        const std::string& date,
+        const std::string& startDate = "",
+        const std::string& endDate = "");
     /// 根据主键读取患者详情；未找到时返回 id 为 0 的对象。
     Patient patientById(int id);
     /// 创建患者并自动创建首个订单，返回患者主键。

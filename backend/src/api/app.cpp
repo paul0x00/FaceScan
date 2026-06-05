@@ -1418,7 +1418,9 @@ private:
         std::map<std::string, std::string> query = parseQuery(target);
         const std::string keyword = query.count("keyword") ? query["keyword"] : "";
         const std::string date = query.count("date") ? query["date"] : "";
-        const std::vector<Patient> list = database_.patients(keyword, date);
+        const std::string startDate = query.count("startDate") ? query["startDate"] : "";
+        const std::string endDate = query.count("endDate") ? query["endDate"] : "";
+        const std::vector<Patient> list = database_.patients(keyword, date, startDate, endDate);
         std::ostringstream os;
         os << "{\"items\":[";
         for (std::size_t i = 0; i < list.size(); ++i) {

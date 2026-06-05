@@ -35,9 +35,8 @@ const latestPlyPath = computed(() => pointClouds.value.find((item) => !latestOrd
 
 /** 加载患者和扫描记录。 */
 onMounted(async () => {
-  if (!store.patients.length) {
-    await store.load()
-  }
+  await store.load()
+  store.selectedId = patientId.value
   scans.value = await fetchScans(patientId.value)
 })
 

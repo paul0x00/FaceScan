@@ -20,7 +20,7 @@ export const usePatientStore = defineStore('patients', {
   },
   actions: {
     /** 按条件刷新患者列表，并在必要时初始化选中患者。 */
-    async load(params: { keyword?: string; date?: string } = {}) {
+    async load(params: { keyword?: string; date?: string; startDate?: string; endDate?: string } = {}) {
       this.loading = true
       try {
         this.patients = await fetchPatients(params)
