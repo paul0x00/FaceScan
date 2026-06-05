@@ -1,7 +1,7 @@
-#include "camera/camera_manager.hpp"
+#include "../src/camera/camera_manager.hpp"
 
-#include "common/file_utils.hpp"
-#include "tests/test_utils.hpp"
+#include "../src/common/file_utils.hpp"
+#include "test_utils.hpp"
 
 #include <gtest/gtest.h>
 

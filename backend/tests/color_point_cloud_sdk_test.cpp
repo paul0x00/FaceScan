@@ -1,7 +1,7 @@
-#include "algorithm/color_point_cloud_sdk.hpp"
+#include "../src/algorithm/color_point_cloud_sdk.hpp"
 
-#include "common/file_utils.hpp"
-#include "tests/test_utils.hpp"
+#include "../src/common/file_utils.hpp"
+#include "test_utils.hpp"
 
 #include <fstream>
 

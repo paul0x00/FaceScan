@@ -13,6 +13,8 @@ struct Patient {
     std::string patientNo;
     /// 当前或最近订单编号，用于前端只读展示。
     std::string orderNo;
+    /// 最新订单正面拍摄图路径，用于患者列表缩略图。
+    std::string thumbnailPath;
     /// 患者姓名。
     std::string name;
     /// 患者性别。
@@ -57,6 +59,8 @@ struct Order {
     std::string status;
     /// 订单创建时间。
     std::string createdAt;
+    /// 订单最后修改时间；有扫描记录时取最新扫描时间，否则取创建时间。
+    std::string updatedAt;
     /// 订单下扫描记录数量。
     int scanCount;
     /// 当前优先展示的预览图路径。
@@ -71,6 +75,8 @@ struct DataRootOrder {
     std::string orderNo;
     /// 从目录名或文件修改时间推导出的创建时间。
     std::string createdAt;
+    /// 订单目录内相关文件的最后修改时间。
+    std::string updatedAt;
     /// 订单目录内可识别的图像文件。
     std::vector<std::string> imagePaths;
     /// 订单目录内的 PLY 点云文件。

@@ -227,6 +227,7 @@ std::string patientJson(const Patient& p)
        << jsonPair("id", p.id) << ","
        << jsonPair("patientNo", p.patientNo) << ","
        << jsonPair("orderNo", p.orderNo) << ","
+       << jsonPair("thumbnailPath", p.thumbnailPath) << ","
        << jsonPair("name", p.name) << ","
        << jsonPair("gender", p.gender) << ","
        << jsonPair("age", p.age) << ","
@@ -248,6 +249,7 @@ std::string orderJson(const Order& order)
        << jsonPair("orderNo", order.orderNo) << ","
        << jsonPair("status", order.status) << ","
        << jsonPair("createdAt", order.createdAt) << ","
+       << jsonPair("updatedAt", order.updatedAt) << ","
        << jsonPair("scanCount", order.scanCount) << ","
        << jsonPair("previewPath", order.previewPath) << ","
        << jsonPair("plyPath", order.plyPath)
@@ -501,6 +503,7 @@ DataRootOrder scanOrderDirectory(const DirectoryEntry& entry)
     DataRootOrder order;
     order.orderNo = entry.name;
     order.createdAt = createdAtFromCode(order.orderNo, entry.modified);
+    std::time_t updated = entry.modified;
     const std::vector<DirectoryEntry> files = listDirectoryEntries(entry.path);
     for (std::size_t i = 0; i < files.size(); ++i) {
         if (files[i].directory || hiddenName(files[i].name)) {
@@ -509,6 +512,7 @@ DataRootOrder scanOrderDirectory(const DirectoryEntry& entry)
         const std::string ext = extensionLower(files[i].name);
         if (ext == "ply" && order.plyPath.empty()) {
             order.plyPath = files[i].path;
+            updated = std::max(updated, files[i].modified);
             continue;
         }
         if (!imageExtension(ext)) {
@@ -516,9 +520,11 @@ DataRootOrder scanOrderDirectory(const DirectoryEntry& entry)
         }
         if (files[i].name.find("pointcloud_view") != std::string::npos) {
             order.previewPath = files[i].path;
+            updated = std::max(updated, files[i].modified);
             continue;
         }
         order.imagePaths.push_back(files[i].path);
+        updated = std::max(updated, files[i].modified);
         if (order.previewPath.empty() && files[i].name.find("_front.") != std::string::npos) {
             order.previewPath = files[i].path;
         }
@@ -526,6 +532,7 @@ DataRootOrder scanOrderDirectory(const DirectoryEntry& entry)
     if (order.previewPath.empty() && !order.imagePaths.empty()) {
         order.previewPath = order.imagePaths[0];
     }
+    order.updatedAt = formatTime(updated);
     return order;
 }
 
@@ -590,6 +597,105 @@ std::vector<unsigned char> readFileBytes(const std::string& path)
         file.read(reinterpret_cast<char*>(&bytes[0]), size);
     }
     return bytes;
+}
+
+/// 按小端序追加 16 位整数到二进制缓冲。
+void appendUInt16Le(std::vector<unsigned char>* out, unsigned int value)
+{
+    out->push_back(static_cast<unsigned char>(value & 0xffu));
+    out->push_back(static_cast<unsigned char>((value >> 8) & 0xffu));
+}
+
+/// 按小端序追加 32 位整数到二进制缓冲。
+void appendUInt32Le(std::vector<unsigned char>* out, unsigned int value)
+{
+    out->push_back(static_cast<unsigned char>(value & 0xffu));
+    out->push_back(static_cast<unsigned char>((value >> 8) & 0xffu));
+    out->push_back(static_cast<unsigned char>((value >> 16) & 0xffu));
+    out->push_back(static_cast<unsigned char>((value >> 24) & 0xffu));
+}
+
+/// 读取 PPM 头部 token，支持跳过注释。
+bool readPpmToken(const std::vector<unsigned char>& bytes, std::size_t* offset, std::string* token)
+{
+    if (!offset || !token) return false;
+    token->clear();
+    while (*offset < bytes.size()) {
+        const unsigned char value = bytes[*offset];
+        if (value == '#') {
+            while (*offset < bytes.size() && bytes[*offset] != '\n') {
+                ++(*offset);
+            }
+            continue;
+        }
+        if (!std::isspace(value)) {
+            break;
+        }
+        ++(*offset);
+    }
+    while (*offset < bytes.size() && !std::isspace(bytes[*offset])) {
+        token->push_back(static_cast<char>(bytes[*offset]));
+        ++(*offset);
+    }
+    return !token->empty();
+}
+
+/// 将 P6 PPM 图像转换为浏览器稳定支持的 BMP。
+std::vector<unsigned char> bmpFromPpm(const std::vector<unsigned char>& bytes)
+{
+    std::size_t offset = 0;
+    std::string token;
+    if (!readPpmToken(bytes, &offset, &token) || token != "P6") return std::vector<unsigned char>();
+    if (!readPpmToken(bytes, &offset, &token)) return std::vector<unsigned char>();
+    const int width = std::atoi(token.c_str());
+    if (!readPpmToken(bytes, &offset, &token)) return std::vector<unsigned char>();
+    const int height = std::atoi(token.c_str());
+    if (!readPpmToken(bytes, &offset, &token)) return std::vector<unsigned char>();
+    const int maxValue = std::atoi(token.c_str());
+    if (width <= 0 || height <= 0 || maxValue != 255) return std::vector<unsigned char>();
+    if (offset < bytes.size() && std::isspace(bytes[offset])) {
+        ++offset;
+    }
+
+    const std::size_t pixelBytes = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 3u;
+    if (bytes.size() < offset + pixelBytes) return std::vector<unsigned char>();
+
+    const unsigned int rowBytes = static_cast<unsigned int>(width) * 3u;
+    const unsigned int padding = (4u - (rowBytes % 4u)) % 4u;
+    const unsigned int bmpPixelBytes = (rowBytes + padding) * static_cast<unsigned int>(height);
+    const unsigned int fileBytes = 54u + bmpPixelBytes;
+    std::vector<unsigned char> out;
+    out.reserve(fileBytes);
+    out.push_back('B');
+    out.push_back('M');
+    appendUInt32Le(&out, fileBytes);
+    appendUInt16Le(&out, 0);
+    appendUInt16Le(&out, 0);
+    appendUInt32Le(&out, 54);
+    appendUInt32Le(&out, 40);
+    appendUInt32Le(&out, static_cast<unsigned int>(width));
+    appendUInt32Le(&out, static_cast<unsigned int>(height));
+    appendUInt16Le(&out, 1);
+    appendUInt16Le(&out, 24);
+    appendUInt32Le(&out, 0);
+    appendUInt32Le(&out, bmpPixelBytes);
+    appendUInt32Le(&out, 2835);
+    appendUInt32Le(&out, 2835);
+    appendUInt32Le(&out, 0);
+    appendUInt32Le(&out, 0);
+    for (int y = height - 1; y >= 0; --y) {
+        const std::size_t row = offset + static_cast<std::size_t>(y) * static_cast<std::size_t>(width) * 3u;
+        for (int x = 0; x < width; ++x) {
+            const std::size_t p = row + static_cast<std::size_t>(x) * 3u;
+            out.push_back(bytes[p + 2]);
+            out.push_back(bytes[p + 1]);
+            out.push_back(bytes[p]);
+        }
+        for (unsigned int i = 0; i < padding; ++i) {
+            out.push_back(0);
+        }
+    }
+    return out;
 }
 
 /// 写出 ZIP 小端 16 位整数。
@@ -1426,6 +1532,12 @@ private:
         const std::vector<unsigned char> bytes = readFileBytes(path);
         if (bytes.empty()) {
             return jsonResponse(req, "{\"error\":\"image file not found\"}", http::status::not_found);
+        }
+        if (ext == "ppm") {
+            const std::vector<unsigned char> bmp = bmpFromPpm(bytes);
+            if (!bmp.empty()) {
+                return binaryFileResponse(req, bmp, "image/bmp");
+            }
         }
         return binaryFileResponse(req, bytes, contentTypeForImagePath(path));
     }

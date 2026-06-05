@@ -6,6 +6,8 @@ export interface Patient {
   patientNo: string
   /** 最近或当前订单编号。 */
   orderNo: string
+  /** 最新订单正面拍摄图路径。 */
+  thumbnailPath: string
   /** 患者姓名。 */
   name: string
   /** 患者性别。 */
@@ -79,6 +81,8 @@ export interface Order {
   status: string
   /** 订单创建时间。 */
   createdAt: string
+  /** 订单最后修改时间。 */
+  updatedAt: string
   /** 扫描记录数量。 */
   scanCount: number
   /** 当前预览图路径。 */

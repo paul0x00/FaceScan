@@ -1,6 +1,6 @@
-#include "api/app.hpp"
+#include "../src/api/app.hpp"
 
-#include "tests/test_utils.hpp"
+#include "test_utils.hpp"
 
 #include <boost/beast/http.hpp>
 #include <gtest/gtest.h>

@@ -752,6 +752,15 @@ button:disabled,
   width: 166px;
 }
 
+.date-input.el-date-editor.el-input {
+  height: 38px;
+}
+
+.date-input .el-input__wrapper {
+  height: 38px;
+  min-height: 38px;
+}
+
 .new-patient {
   margin-left: auto;
 }
@@ -823,11 +832,18 @@ button:disabled,
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   width: 48px;
   height: 48px;
   color: var(--teal);
   background: #e9f6f6;
   border-radius: 7px;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .patient-summary {
@@ -935,8 +951,10 @@ button:disabled,
 }
 
 .scan-card {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
-  min-height: 262px;
+  min-height: 326px;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -969,9 +987,9 @@ button:disabled,
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  width: calc(100% - 20px);
-  height: 202px;
-  margin: 10px;
+  width: calc(100% - 24px);
+  height: 204px;
+  margin: 12px 12px 0;
   color: #516070;
   background: #f2f5f7;
   border: 1px solid #e1e7ed;
@@ -988,9 +1006,10 @@ button:disabled,
 
 .scan-preview-image {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  inset: 10px;
+  width: calc(100% - 20px);
+  height: calc(100% - 20px);
+  border-radius: 6px;
   object-fit: cover;
 }
 
@@ -1011,6 +1030,42 @@ button:disabled,
 .scan-placeholder small {
   color: var(--muted);
   font-size: 12px;
+}
+
+.scan-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 24px);
+  min-height: 38px;
+  margin: 10px 12px 12px;
+  padding: 0 12px;
+  color: #516070;
+  background: #f8fafb;
+  border: 1px solid #e1e7ed;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.scan-time svg {
+  flex: 0 0 auto;
+  color: var(--teal);
+}
+
+.scan-time span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scan-time small {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .order-empty {

@@ -70,6 +70,9 @@ std::vector<Patient> Database::patients(const std::string& keyword, const std::s
     std::vector<Patient> out;
     std::string sql = "SELECT id, patient_no, "
         "(SELECT order_no FROM orders WHERE orders.patient_id=patient.id ORDER BY id DESC LIMIT 1) AS order_no, "
+        "(SELECT image_paths FROM scan_result "
+        "WHERE order_id=(SELECT id FROM orders WHERE orders.patient_id=patient.id ORDER BY id DESC LIMIT 1) "
+        "AND image_paths IS NOT NULL AND image_paths<>'' ORDER BY id DESC LIMIT 1) AS thumbnail_paths, "
         "name, gender, age, phone, doctor, remark, created_at FROM patient";
     std::vector<std::string> params;
     std::vector<std::string> clauses;
@@ -110,6 +113,9 @@ Patient Database::patientById(int id)
     std::lock_guard<std::mutex> lock(mutex_);
     sqlite3_stmt* stmt = prepare("SELECT id, patient_no, "
         "(SELECT order_no FROM orders WHERE orders.patient_id=patient.id ORDER BY id DESC LIMIT 1) AS order_no, "
+        "(SELECT image_paths FROM scan_result "
+        "WHERE order_id=(SELECT id FROM orders WHERE orders.patient_id=patient.id ORDER BY id DESC LIMIT 1) "
+        "AND image_paths IS NOT NULL AND image_paths<>'' ORDER BY id DESC LIMIT 1) AS thumbnail_paths, "
         "name, gender, age, phone, doctor, remark, created_at FROM patient WHERE id=?");
     sqlite3_bind_int(stmt, 1, id);
     Patient p;
@@ -213,6 +219,8 @@ Patient Database::patientByOrderId(int orderId)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     sqlite3_stmt* stmt = prepare("SELECT patient.id, patient.patient_no, orders.order_no, "
+        "(SELECT image_paths FROM scan_result WHERE order_id=orders.id AND image_paths IS NOT NULL AND image_paths<>'' "
+        "ORDER BY id DESC LIMIT 1) AS thumbnail_paths, "
         "patient.name, patient.gender, patient.age, patient.phone, patient.doctor, patient.remark, patient.created_at "
         "FROM patient JOIN orders ON orders.patient_id=patient.id WHERE orders.id=?");
     sqlite3_bind_int(stmt, 1, orderId);
@@ -436,7 +444,8 @@ std::vector<Order> Database::ordersForPatient(int patientId)
         "SELECT orders.id, orders.patient_id, orders.order_no, orders.status, orders.created_at, "
         "COUNT(scan_result.id) AS scan_count, "
         "(SELECT preview_path FROM scan_result WHERE scan_result.order_id=orders.id ORDER BY id DESC LIMIT 1) AS preview_path, "
-        "(SELECT ply_path FROM scan_result WHERE scan_result.order_id=orders.id AND ply_path IS NOT NULL AND ply_path<>'' ORDER BY id DESC LIMIT 1) AS ply_path "
+        "(SELECT ply_path FROM scan_result WHERE scan_result.order_id=orders.id AND ply_path IS NOT NULL AND ply_path<>'' ORDER BY id DESC LIMIT 1) AS ply_path, "
+        "COALESCE(MAX(scan_result.created_at), orders.created_at) AS updated_at "
         "FROM orders LEFT JOIN scan_result ON scan_result.order_id=orders.id "
         "WHERE orders.patient_id=? "
         "GROUP BY orders.id, orders.patient_id, orders.order_no, orders.status, orders.created_at "
@@ -453,6 +462,7 @@ std::vector<Order> Database::ordersForPatient(int patientId)
         order.scanCount = sqlite3_column_int(stmt, 5);
         order.previewPath = columnText(stmt, 6);
         order.plyPath = columnText(stmt, 7);
+        order.updatedAt = columnText(stmt, 8);
         orders.push_back(order);
     }
     sqlite3_finalize(stmt);
@@ -650,14 +660,27 @@ Patient Database::readPatient(sqlite3_stmt* stmt)
     p.id = sqlite3_column_int(stmt, 0);
     p.patientNo = columnText(stmt, 1);
     p.orderNo = columnText(stmt, 2);
-    p.name = columnText(stmt, 3);
-    p.gender = columnText(stmt, 4);
-    p.age = sqlite3_column_int(stmt, 5);
-    p.phone = columnText(stmt, 6);
-    p.doctor = columnText(stmt, 7);
-    p.remark = columnText(stmt, 8);
-    p.createdAt = columnText(stmt, 9);
+    p.thumbnailPath = frontImagePath(columnText(stmt, 3));
+    p.name = columnText(stmt, 4);
+    p.gender = columnText(stmt, 5);
+    p.age = sqlite3_column_int(stmt, 6);
+    p.phone = columnText(stmt, 7);
+    p.doctor = columnText(stmt, 8);
+    p.remark = columnText(stmt, 9);
+    p.createdAt = columnText(stmt, 10);
     return p;
+}
+
+/// 从采图路径集合中优先选择正面图。
+std::string Database::frontImagePath(const std::string& imagePathText)
+{
+    const std::vector<std::string> paths = splitLines(imagePathText);
+    for (std::size_t i = 0; i < paths.size(); ++i) {
+        if (paths[i].find("_front.") != std::string::npos) {
+            return paths[i];
+        }
+    }
+    return "";
 }
 
 /// 绑定患者插入字段。
@@ -805,13 +828,15 @@ void Database::replaceOrderScanUnlocked(int orderId, const DataRootOrder& order)
 
     sqlite3_stmt* insertStmt = prepare(
         "INSERT INTO scan_result(order_id, ply_path, image_paths, preview_path, created_at) VALUES(?,?,?,?,?)");
-    const std::string createdAt = order.createdAt.empty() ? nowText() : order.createdAt;
+    const std::string updatedAt = order.updatedAt.empty()
+        ? (order.createdAt.empty() ? nowText() : order.createdAt)
+        : order.updatedAt;
     const std::string imagePathText = joinLines(order.imagePaths);
     sqlite3_bind_int(insertStmt, 1, orderId);
     sqlite3_bind_text(insertStmt, 2, order.plyPath.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(insertStmt, 3, imagePathText.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(insertStmt, 4, previewPath.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(insertStmt, 5, createdAt.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(insertStmt, 5, updatedAt.c_str(), -1, SQLITE_TRANSIENT);
     stepDone(insertStmt);
     sqlite3_finalize(insertStmt);
 }

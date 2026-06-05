@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { CalendarDays, Camera, CirclePlus, ClipboardList, Edit, FolderOpen, RefreshCw, RotateCcw, Search, Stethoscope, Trash2, UserPlus } from 'lucide-vue-next'
+import { CalendarDays, CirclePlus, ClipboardList, Edit, FolderOpen, RotateCcw, Search, Stethoscope, Trash2, UserPlus, UserRound } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { createOrder, deleteOrder, deletePatient, fetchOrders, imageFileUrl, openOrderFolder } from '../api/client'
 import { usePatientStore } from '../stores/patients'
@@ -20,17 +20,17 @@ const filters = reactive({
 const activeId = ref(0)
 /** 搜索按钮加载状态。 */
 const searching = ref(false)
-/** 整页刷新加载状态。 */
-const refreshing = ref(false)
 /** 当前患者订单列表。 */
 const orders = ref<Order[]>([])
 /** 订单列表加载状态。 */
 const ordersLoading = ref(false)
+/** 缩略图加载失败的患者集合。 */
+const brokenThumbnails = ref<Record<number, boolean>>({})
 
 /** 当前选中患者；未选中时回退到第一位患者。 */
 const selected = computed(() => store.patients.find((item) => item.id === activeId.value) ?? store.patients[0])
 
-onMounted(refreshDashboard)
+onMounted(() => loadPatientDashboard(true))
 
 /** 切换患者时自动刷新右侧订单列表。 */
 watch(activeId, () => {
@@ -41,9 +41,7 @@ watch(activeId, () => {
 async function search() {
   searching.value = true
   try {
-    await store.load(filters)
-    activeId.value = store.patients[0]?.id ?? 0
-    await loadOrders()
+    await loadPatientDashboard(false)
   } finally {
     searching.value = false
   }
@@ -56,18 +54,17 @@ async function reset() {
   await search()
 }
 
-/** 刷新首页患者和订单数据，并尽量保留当前选中患者。 */
-async function refreshDashboard() {
-  refreshing.value = true
-  try {
-    const previousId = activeId.value
-    await store.load(filters)
-    activeId.value = store.patients.some((patient) => patient.id === previousId)
-      ? previousId
-      : store.patients[0]?.id ?? 0
+/** 加载患者和订单数据；初始化时保留仍存在的当前选中患者。 */
+async function loadPatientDashboard(keepCurrent: boolean) {
+  const previousId = activeId.value
+  await store.load(filters)
+  const nextId = keepCurrent && store.patients.some((patient) => patient.id === previousId)
+    ? previousId
+    : store.patients[0]?.id ?? 0
+  if (activeId.value === nextId) {
     await loadOrders()
-  } finally {
-    refreshing.value = false
+  } else {
+    activeId.value = nextId
   }
 }
 
@@ -89,6 +86,28 @@ function openShoot(patientId: number, orderId: number) {
 /** 返回订单点云预览图 URL；未生成点云时返回空。 */
 function orderPreviewUrl(order: Order) {
   return order.plyPath && order.previewPath ? imageFileUrl(order.previewPath) : ''
+}
+
+/** 返回患者列表缩略图 URL；加载失败时由默认头像兜底。 */
+function patientThumbnailUrl(patient: { id: number; thumbnailPath?: string }) {
+  if (!patient.thumbnailPath || brokenThumbnails.value[patient.id]) return ''
+  return imageFileUrl(patient.thumbnailPath)
+}
+
+/** 记录不可展示的患者缩略图。 */
+function markThumbnailBroken(patientId: number) {
+  brokenThumbnails.value = { ...brokenThumbnails.value, [patientId]: true }
+}
+
+/** 返回订单最后修改时间；兼容旧接口数据时回退到创建时间。 */
+function orderUpdatedAt(order: Order) {
+  return order.updatedAt || order.createdAt || '暂无修改时间'
+}
+
+/** 返回缩略图占位状态文案。 */
+function orderScanSummary(order: Order) {
+  if (order.plyPath) return '已生成点云截图'
+  return order.scanCount ? `已保存 ${order.scanCount} 张图像` : '尚未保存图像'
 }
 
 /** 加载当前患者订单。 */
@@ -178,9 +197,6 @@ async function revealOrderFolder(order: Order) {
       <el-button class="soft-btn" :disabled="searching" @click="reset">
         <RotateCcw :size="17" />重置
       </el-button>
-      <el-button class="soft-btn" :loading="refreshing" @click="refreshDashboard">
-        <RefreshCw :size="17" />刷新
-      </el-button>
       <el-button class="primary-btn new-patient" @click="openBasic()">
         <UserPlus :size="18" />新建患者
       </el-button>
@@ -203,7 +219,13 @@ async function revealOrderFolder(order: Order) {
           @keyup.enter="activeId = patient.id"
         >
           <div class="thumb">
-            <Camera :size="19" />
+            <img
+              v-if="patientThumbnailUrl(patient)"
+              :src="patientThumbnailUrl(patient)"
+              :alt="`${patient.name || '患者'}正面图`"
+              @error="markThumbnailBroken(patient.id)"
+            />
+            <UserRound v-else :size="22" />
           </div>
           <div class="patient-summary">
             <strong>{{ patient.name || '姓名' }}，{{ patient.gender || '性别' }}</strong>
@@ -247,10 +269,15 @@ async function revealOrderFolder(order: Order) {
               <img v-if="orderPreviewUrl(order)" class="scan-preview-image" :src="orderPreviewUrl(order)" :alt="`${order.orderNo} 点云正面截图`" />
               <span v-else class="scan-placeholder">
                 <ClipboardList :size="28" />
-                <strong>{{ order.createdAt }}</strong>
-                <small>{{ order.plyPath ? '已生成点云截图' : `已保存 ${order.scanCount} 张图像` }}</small>
+                <strong>{{ order.scanCount ? '等待点云预览' : '等待采集预览' }}</strong>
+                <small>{{ orderScanSummary(order) }}</small>
               </span>
             </button>
+            <div class="scan-time">
+              <CalendarDays :size="16" />
+              <span>{{ orderUpdatedAt(order) }}</span>
+              <small>最后修改</small>
+            </div>
           </article>
           <div v-if="!ordersLoading && !orders.length" class="empty-state order-empty">暂无订单，请在左侧患者卡片新增订单</div>
         </template>

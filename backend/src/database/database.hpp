@@ -80,6 +80,8 @@ private:
     static std::string columnText(sqlite3_stmt* stmt, int column);
     /// 从当前结果行映射患者对象。
     static Patient readPatient(sqlite3_stmt* stmt);
+    /// 从换行分隔的采图路径中选择正面图。
+    static std::string frontImagePath(const std::string& imagePathText);
     /// 将患者字段绑定到 prepared statement。
     static void bindPatientFields(sqlite3_stmt* stmt, const Patient& patient);
     /// 将整数转换为字符串。
