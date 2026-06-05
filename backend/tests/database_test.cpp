@@ -1,6 +1,6 @@
-#include "database/database.hpp"
+#include "../src/database/database.hpp"
 
-#include "tests/test_utils.hpp"
+#include "test_utils.hpp"
 
 #include <gtest/gtest.h>
 
