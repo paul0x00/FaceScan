@@ -277,6 +277,39 @@ std::string pointCloudJson(int orderId, const PointCloudBuildResult& result, con
     return os.str();
 }
 
+/// 将单个相机参数序列化为 JSON。
+std::string cameraControlRangeJson(const CameraControlRange& control)
+{
+    std::ostringstream os;
+    os << "{"
+       << jsonPair("key", control.key) << ","
+       << jsonPair("label", control.label) << ","
+       << "\"supported\":" << (control.supported ? "true" : "false") << ","
+       << "\"writable\":" << (control.writable ? "true" : "false") << ","
+       << jsonPair("value", control.value) << ","
+       << jsonPair("min", control.min) << ","
+       << jsonPair("max", control.max) << ","
+       << jsonPair("step", control.step) << ","
+       << jsonPair("defaultValue", control.defaultValue)
+       << "}";
+    return os.str();
+}
+
+/// 将相机参数状态序列化为拍摄页可直接使用的 JSON。
+std::string cameraControlsJson(const CameraControlState& state)
+{
+    std::ostringstream os;
+    os << "{"
+       << "\"autoExposureSupported\":" << (state.autoExposureSupported ? "true" : "false") << ","
+       << "\"autoExposureWritable\":" << (state.autoExposureWritable ? "true" : "false") << ","
+       << "\"autoExposure\":" << (state.autoExposure ? "true" : "false") << ","
+       << "\"exposure\":" << cameraControlRangeJson(state.exposure) << ","
+       << "\"gain\":" << cameraControlRangeJson(state.gain) << ","
+       << "\"brightness\":" << cameraControlRangeJson(state.brightness)
+       << "}";
+    return os.str();
+}
+
 /// 从简单 JSON 请求体提取患者表单。
 Patient patientFromBody(const std::string& body)
 {
@@ -1146,6 +1179,12 @@ public:
                 camera_.stop();
                 return jsonResponse(req, "{\"streaming\":false}");
             }
+            if (req.method() == http::verb::get && path == "/api/camera/controls") {
+                return jsonResponse(req, cameraControlsJson(camera_.controls()));
+            }
+            if ((req.method() == http::verb::put || req.method() == http::verb::post) && path == "/api/camera/controls") {
+                return updateCameraControls(req);
+            }
             if (req.method() == http::verb::get && path == "/api/camera/frame") {
                 std::map<std::string, std::string> query = parseQuery(target);
                 const std::string view = query.count("view") ? query["view"] : "front";
@@ -1465,6 +1504,22 @@ private:
         }
         os << "]}";
         return jsonResponse(req, os.str());
+    }
+
+    /// API：更新拍摄页相机参数。
+    http::response<http::string_body> updateCameraControls(const http::request<http::string_body>& req)
+    {
+        CameraControlUpdate update;
+        update.hasAutoExposure = jsonHasKey(req.body(), "autoExposure");
+        update.autoExposure = jsonBoolValue(req.body(), "autoExposure");
+        update.hasExposure = jsonHasKey(req.body(), "exposure");
+        update.exposure = jsonIntValue(req.body(), "exposure");
+        update.hasGain = jsonHasKey(req.body(), "gain");
+        update.gain = jsonIntValue(req.body(), "gain");
+        update.hasBrightness = jsonHasKey(req.body(), "brightness");
+        update.brightness = jsonIntValue(req.body(), "brightness");
+
+        return jsonResponse(req, cameraControlsJson(camera_.updateControls(update)));
     }
 
     /// API：基于订单最近采集图片生成彩色点云。

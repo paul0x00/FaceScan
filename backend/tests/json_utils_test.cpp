@@ -22,6 +22,20 @@ TEST(JsonUtilsTest, ReadsSimpleStringAndIntegerFields)
     EXPECT_EQ(0, jsonIntValue(body, "missing"));
 }
 
+/// 验证轻量 JSON 布尔字段读取和字段存在判断。
+TEST(JsonUtilsTest, ReadsSimpleBooleanFieldsAndKeyPresence)
+{
+    const std::string body = "{\"autoExposure\":false,\"enabled\":true,\"numeric\":1}";
+
+    EXPECT_TRUE(jsonHasKey(body, "autoExposure"));
+    EXPECT_TRUE(jsonHasKey(body, "enabled"));
+    EXPECT_FALSE(jsonHasKey(body, "missing"));
+    EXPECT_FALSE(jsonBoolValue(body, "autoExposure"));
+    EXPECT_TRUE(jsonBoolValue(body, "enabled"));
+    EXPECT_TRUE(jsonBoolValue(body, "numeric"));
+    EXPECT_FALSE(jsonBoolValue(body, "missing"));
+}
+
 /// 验证 URL 查询串和路径解析。
 TEST(JsonUtilsTest, ParsesUrlQueryAndPath)
 {

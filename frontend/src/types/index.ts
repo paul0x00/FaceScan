@@ -122,3 +122,34 @@ export interface AppSettings {
   /** 当前相机模式。 */
   cameraMode: string
 }
+
+/** 单个相机参数的设备范围和当前值。 */
+export interface CameraControlRange {
+  key: string
+  label: string
+  supported: boolean
+  writable: boolean
+  value: number
+  min: number
+  max: number
+  step: number
+  defaultValue: number
+}
+
+/** 拍摄页可调相机参数。 */
+export interface CameraControls {
+  autoExposureSupported: boolean
+  autoExposureWritable: boolean
+  autoExposure: boolean
+  exposure: CameraControlRange
+  gain: CameraControlRange
+  brightness: CameraControlRange
+}
+
+/** 相机参数更新请求。 */
+export interface CameraControlUpdate {
+  autoExposure?: boolean
+  exposure?: number
+  gain?: number
+  brightness?: number
+}

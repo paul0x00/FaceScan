@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AppSettings, Order, Patient, PatientForm, PointCloudResult, ScanResult } from '../types'
+import type { AppSettings, CameraControlUpdate, CameraControls, Order, Patient, PatientForm, PointCloudResult, ScanResult } from '../types'
 
 /** 统一 Axios 实例，开发环境通过 Vite 代理访问后端 /api。 */
 const api = axios.create({
@@ -98,6 +98,18 @@ export async function startCamera() {
 /** 停止相机预览。 */
 export async function stopCamera() {
   await api.post('/camera/stop')
+}
+
+/** 读取真实或模拟相机参数。 */
+export async function fetchCameraControls() {
+  const { data } = await api.get<CameraControls>('/camera/controls')
+  return data
+}
+
+/** 写入真实或模拟相机参数。 */
+export async function updateCameraControls(update: CameraControlUpdate) {
+  const { data } = await api.put<CameraControls>('/camera/controls', update)
+  return data
 }
 
 /** 同步采图并返回写入路径。 */

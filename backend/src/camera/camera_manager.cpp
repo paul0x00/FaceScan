@@ -27,6 +27,37 @@ namespace {
 /// 前端固定展示的四个采集视角。
 const char* kViewNames[] = { "left", "front", "right", "bottom" };
 
+/// 将整数限制在相机属性允许范围内。
+int clampInt(int value, int minValue, int maxValue)
+{
+    return std::max(minValue, std::min(maxValue, value));
+}
+
+/// 构造一个参数范围对象。
+CameraControlRange makeControlRange(
+    const std::string& key,
+    const std::string& label,
+    bool supported,
+    bool writable,
+    int value,
+    int minValue,
+    int maxValue,
+    int step,
+    int defaultValue)
+{
+    CameraControlRange out;
+    out.key = key;
+    out.label = label;
+    out.supported = supported;
+    out.writable = writable;
+    out.value = value;
+    out.min = minValue;
+    out.max = maxValue;
+    out.step = step <= 0 ? 1 : step;
+    out.defaultValue = defaultValue;
+    return out;
+}
+
 /// 向字符串追加一个低 8 位字节。
 void appendByte(std::string* out, unsigned int value)
 {
@@ -172,7 +203,13 @@ class MockCameraDevice : public ICameraDevice {
 public:
     /// 使用指定图片根目录初始化模拟相机。
     explicit MockCameraDevice(const std::string& imageRoot)
-        : imageRoot_(CameraManager::normalizeRoot(imageRoot)), streaming_(false), frameIndex_(0)
+        : imageRoot_(CameraManager::normalizeRoot(imageRoot)),
+          streaming_(false),
+          frameIndex_(0),
+          autoExposure_(true),
+          exposure_(42),
+          gain_(12),
+          brightness_(56)
     {
     }
 
@@ -198,6 +235,30 @@ public:
     void setImageRoot(const std::string& imageRoot)
     {
         imageRoot_ = CameraManager::normalizeRoot(imageRoot);
+    }
+
+    /// 返回模拟相机参数状态。
+    CameraControlState controls()
+    {
+        return controlState();
+    }
+
+    /// 更新模拟参数，便于前端在无真实相机时完整演练。
+    CameraControlState updateControls(const CameraControlUpdate& update)
+    {
+        if (update.hasAutoExposure) {
+            autoExposure_ = update.autoExposure;
+        }
+        if (update.hasExposure) {
+            exposure_ = clampInt(update.exposure, 0, 100);
+        }
+        if (update.hasGain) {
+            gain_ = clampInt(update.gain, 0, 48);
+        }
+        if (update.hasBrightness) {
+            brightness_ = clampInt(update.brightness, 0, 100);
+        }
+        return controlState();
     }
 
     /// 生成指定视角的 SVG 预览图。
@@ -228,6 +289,27 @@ private:
     std::atomic<bool> streaming_;
     /// 用于制造动态预览效果的帧序号。
     std::atomic<int> frameIndex_;
+    /// 模拟自动曝光开关。
+    bool autoExposure_;
+    /// 模拟曝光值。
+    int exposure_;
+    /// 模拟增益值。
+    int gain_;
+    /// 模拟亮度值。
+    int brightness_;
+
+    /// 组装模拟相机参数快照。
+    CameraControlState controlState() const
+    {
+        CameraControlState state;
+        state.autoExposureSupported = true;
+        state.autoExposureWritable = true;
+        state.autoExposure = autoExposure_;
+        state.exposure = makeControlRange("exposure", "曝光", true, true, exposure_, 0, 100, 1, 42);
+        state.gain = makeControlRange("gain", "增益", true, true, gain_, 0, 48, 1, 12);
+        state.brightness = makeControlRange("brightness", "亮度", true, true, brightness_, 0, 100, 1, 56);
+        return state;
+    }
 
     /// 根据视角和帧序号绘制模拟相机 SVG。
     std::string frameSvg(const std::string& view)
@@ -413,6 +495,34 @@ public:
         imageRoot_ = CameraManager::normalizeRoot(imageRoot);
     }
 
+    /// 读取 Orbbec 彩色相机曝光、增益、亮度等属性。
+    CameraControlState controls()
+    {
+        std::lock_guard<std::mutex> lock(controlMutex_);
+        ensureDevice();
+        return controlStateLocked();
+    }
+
+    /// 写入 Orbbec 彩色相机属性并返回最新状态。
+    CameraControlState updateControls(const CameraControlUpdate& update)
+    {
+        std::lock_guard<std::mutex> lock(controlMutex_);
+        ensureDevice();
+        if (update.hasAutoExposure) {
+            setBoolPropertyIfWritable(OB_PROP_COLOR_AUTO_EXPOSURE_BOOL, update.autoExposure, "color auto exposure");
+        }
+        if (update.hasExposure) {
+            setIntPropertyIfWritable(OB_PROP_COLOR_EXPOSURE_INT, update.exposure, "color exposure");
+        }
+        if (update.hasGain) {
+            setIntPropertyIfWritable(OB_PROP_COLOR_GAIN_INT, update.gain, "color gain");
+        }
+        if (update.hasBrightness) {
+            setIntPropertyIfWritable(OB_PROP_COLOR_BRIGHTNESS_INT, update.brightness, "color brightness");
+        }
+        return controlStateLocked();
+    }
+
     /// 返回最近彩色帧的 BMP 预览；尚无帧时返回等待 SVG。
     CameraImage frameImage(const std::string&)
     {
@@ -524,6 +634,55 @@ private:
     uint64_t latestPreviewFrameIndex_;
     /// 最近一次同步采集结果。
     SynchronizedCaptureFrames lastCapture_;
+
+    /// 查询一个整数属性的范围和值。
+    CameraControlRange intControlLocked(OBPropertyID property, const std::string& key, const std::string& label)
+    {
+        const bool readable = device_->isPropertySupported(property, OB_PERMISSION_READ);
+        const bool writable = device_->isPropertySupported(property, OB_PERMISSION_WRITE);
+        if (!readable) {
+            return makeControlRange(key, label, false, writable, 0, 0, 100, 1, 0);
+        }
+        const OBIntPropertyRange range = device_->getIntPropertyRange(property);
+        const int current = device_->getIntProperty(property);
+        return makeControlRange(key, label, true, writable, current, range.min, range.max, range.step, range.def);
+    }
+
+    /// 读取完整参数快照，调用者需持有控制锁。
+    CameraControlState controlStateLocked()
+    {
+        CameraControlState state;
+        state.autoExposureSupported = device_->isPropertySupported(OB_PROP_COLOR_AUTO_EXPOSURE_BOOL, OB_PERMISSION_READ);
+        state.autoExposureWritable = device_->isPropertySupported(OB_PROP_COLOR_AUTO_EXPOSURE_BOOL, OB_PERMISSION_WRITE);
+        state.autoExposure = state.autoExposureSupported ? device_->getBoolProperty(OB_PROP_COLOR_AUTO_EXPOSURE_BOOL) : false;
+        state.exposure = intControlLocked(OB_PROP_COLOR_EXPOSURE_INT, "exposure", "曝光");
+        state.gain = intControlLocked(OB_PROP_COLOR_GAIN_INT, "gain", "增益");
+        state.brightness = intControlLocked(OB_PROP_COLOR_BRIGHTNESS_INT, "brightness", "亮度");
+        return state;
+    }
+
+    /// 在设备支持写入时写布尔属性。
+    void setBoolPropertyIfWritable(OBPropertyID property, bool value, const std::string& label)
+    {
+        if (!device_->isPropertySupported(property, OB_PERMISSION_WRITE)) {
+            throw std::runtime_error("Orbbec property is not writable: " + label);
+        }
+        device_->setBoolProperty(property, value);
+    }
+
+    /// 在设备支持写入时按范围裁剪并写整数属性。
+    void setIntPropertyIfWritable(OBPropertyID property, int value, const std::string& label)
+    {
+        if (!device_->isPropertySupported(property, OB_PERMISSION_WRITE)) {
+            throw std::runtime_error("Orbbec property is not writable: " + label);
+        }
+        int next = value;
+        if (device_->isPropertySupported(property, OB_PERMISSION_READ)) {
+            const OBIntPropertyRange range = device_->getIntPropertyRange(property);
+            next = clampInt(value, range.min, range.max);
+        }
+        device_->setIntProperty(property, next);
+    }
 
     /// 在持有控制锁时启动彩色预览。
     void startColorPreviewLocked()
@@ -733,6 +892,18 @@ bool CameraManager::streaming() const
 void CameraManager::setImageRoot(const std::string& imageRoot)
 {
     device_->setImageRoot(imageRoot);
+}
+
+/// 代理读取设备参数。
+CameraControlState CameraManager::controls()
+{
+    return device_->controls();
+}
+
+/// 代理更新设备参数。
+CameraControlState CameraManager::updateControls(const CameraControlUpdate& update)
+{
+    return device_->updateControls(update);
 }
 
 /// 规范化目录路径，避免后续拼接出现重复分隔符。

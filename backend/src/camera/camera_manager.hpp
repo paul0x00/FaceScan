@@ -69,6 +69,63 @@ struct SynchronizedCaptureFrames {
     bool complete() const { return color.valid() && leftIr.valid() && rightIr.valid(); }
 };
 
+/// 单个相机参数的当前值、范围和可写状态。
+struct CameraControlRange {
+    std::string key;
+    std::string label;
+    bool supported;
+    bool writable;
+    int value;
+    int min;
+    int max;
+    int step;
+    int defaultValue;
+
+    CameraControlRange()
+        : supported(false), writable(false), value(0), min(0), max(100), step(1), defaultValue(0)
+    {
+    }
+};
+
+/// 拍摄页可调的相机参数快照。
+struct CameraControlState {
+    bool autoExposureSupported;
+    bool autoExposureWritable;
+    bool autoExposure;
+    CameraControlRange exposure;
+    CameraControlRange gain;
+    CameraControlRange brightness;
+
+    CameraControlState()
+        : autoExposureSupported(false), autoExposureWritable(false), autoExposure(false)
+    {
+    }
+};
+
+/// 相机参数更新请求，使用 has* 字段区分缺省值和实际写入值。
+struct CameraControlUpdate {
+    bool hasAutoExposure;
+    bool autoExposure;
+    bool hasExposure;
+    int exposure;
+    bool hasGain;
+    int gain;
+    bool hasBrightness;
+    int brightness;
+
+    CameraControlUpdate()
+        : hasAutoExposure(false),
+          autoExposure(false),
+          hasExposure(false),
+          exposure(0),
+          hasGain(false),
+          gain(0),
+          hasBrightness(false),
+          brightness(0)
+    {
+    }
+};
+
 /// 相机设备抽象接口，屏蔽模拟设备和真实 Orbbec 设备差异。
 class ICameraDevice {
 public:
@@ -83,6 +140,10 @@ public:
     virtual bool streaming() const = 0;
     /// 更新图片保存根目录。
     virtual void setImageRoot(const std::string& imageRoot) = 0;
+    /// 读取当前可调相机参数。
+    virtual CameraControlState controls() = 0;
+    /// 写入相机参数并返回最新状态。
+    virtual CameraControlState updateControls(const CameraControlUpdate& update) = 0;
     /// 生成指定视角的预览图。
     virtual CameraImage frameImage(const std::string& view) = 0;
     /// 同步采集并将订单图像写入指定目录。
@@ -107,6 +168,10 @@ public:
     bool streaming() const;
     /// 更新图片保存根目录。
     void setImageRoot(const std::string& imageRoot);
+    /// 读取当前可调相机参数。
+    CameraControlState controls();
+    /// 写入相机参数并返回最新状态。
+    CameraControlState updateControls(const CameraControlUpdate& update);
 
     /// 规范化图片根目录，去掉末尾分隔符并提供默认值。
     static std::string normalizeRoot(const std::string& path);

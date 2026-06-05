@@ -4,7 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { Camera, Pause, Play, RotateCcw, SlidersHorizontal } from 'lucide-vue-next'
 import { ElLoading, ElMessage } from 'element-plus'
 import StepHeader from '../components/StepHeader.vue'
-import { capture, createOrder, fetchOrders, reconstructOrder, startCamera, stopCamera } from '../api/client'
+import { capture, createOrder, fetchCameraControls, fetchOrders, reconstructOrder, startCamera, stopCamera, updateCameraControls } from '../api/client'
+import type { CameraControlRange, CameraControlUpdate, CameraControls } from '../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -20,10 +21,15 @@ const frameTick = ref(Date.now())
 const orderId = ref<number>()
 /** 同步采图和点云生成进行中状态。 */
 const capturing = ref(false)
-/** MVP 相机曝光参数占位值。 */
-const exposure = ref(42)
-/** MVP 相机亮度参数占位值。 */
-const brightness = ref(56)
+/** 相机参数读取结果。 */
+const cameraControls = ref<CameraControls>()
+/** 相机参数提交状态。 */
+const updatingControls = ref(false)
+/** 参数控件列表。 */
+const controlList = computed(() => cameraControls.value ? [
+  cameraControls.value.exposure,
+  cameraControls.value.gain
+] : [])
 /** 预览刷新定时器句柄。 */
 let timer = 0
 
@@ -44,6 +50,7 @@ function frameUrl() {
 onMounted(async () => {
   try {
     await startCamera()
+    await loadCameraControls()
   } catch (error) {
     running.value = false
     ElMessage.error(error instanceof Error ? error.message : '相机启动失败')
@@ -78,11 +85,69 @@ function toggle() {
   running.value = !running.value
 }
 
-/** 恢复 MVP 相机参数占位控件默认值。 */
-function resetCameraParams() {
-  exposure.value = 42
-  brightness.value = 56
-  ElMessage.success('相机参数已恢复默认')
+/** 读取设备当前相机参数。 */
+async function loadCameraControls() {
+  try {
+    cameraControls.value = await fetchCameraControls()
+  } catch (error) {
+    ElMessage.warning(error instanceof Error ? error.message : '相机参数读取失败')
+  }
+}
+
+/** 判断参数是否会被自动曝光接管。 */
+function controlledByAutoExposure(control: CameraControlRange) {
+  return Boolean(cameraControls.value?.autoExposure && (control.key === 'exposure' || control.key === 'gain'))
+}
+
+/** 参数控件禁用状态。 */
+function controlDisabled(control: CameraControlRange) {
+  return updatingControls.value || !control.supported || !control.writable || controlledByAutoExposure(control)
+}
+
+/** 提交单个数值参数。 */
+async function applyCameraControl(control: CameraControlRange, value: number | number[]) {
+  const nextValue = Array.isArray(value) ? value[0] : value
+  const update: CameraControlUpdate = {}
+  if (control.key === 'exposure') update.exposure = nextValue
+  if (control.key === 'gain') update.gain = nextValue
+  if ((control.key === 'exposure' || control.key === 'gain') && cameraControls.value?.autoExposure) {
+    update.autoExposure = false
+  }
+  await saveCameraControls(update)
+}
+
+/** 切换自动曝光。 */
+async function applyAutoExposure(value: boolean | string | number) {
+  await saveCameraControls({ autoExposure: Boolean(value) })
+}
+
+/** 写入相机参数并刷新后端返回的设备状态。 */
+async function saveCameraControls(update: CameraControlUpdate) {
+  updatingControls.value = true
+  try {
+    cameraControls.value = await updateCameraControls(update)
+    ElMessage.success('相机参数已更新')
+  } catch (error) {
+    await loadCameraControls()
+    ElMessage.error(error instanceof Error ? error.message : '相机参数更新失败')
+  } finally {
+    updatingControls.value = false
+  }
+}
+
+/** 恢复相机参数默认值。 */
+async function resetCameraParams() {
+  if (!cameraControls.value) return
+  const update: CameraControlUpdate = {}
+  if (cameraControls.value.autoExposureSupported && cameraControls.value.autoExposureWritable) {
+    update.autoExposure = true
+  }
+  for (const control of controlList.value) {
+    if (!control.supported || !control.writable) continue
+    if (control.key === 'exposure') update.exposure = control.defaultValue
+    if (control.key === 'gain') update.gain = control.defaultValue
+  }
+  await saveCameraControls(update)
 }
 
 /** 执行同步采图、点云重建，并进入点云查看页。 */
@@ -135,13 +200,32 @@ async function shoot() {
             <SlidersHorizontal :size="18" />
             <span>相机参数</span>
           </header>
-          <label>
-            曝光
-            <el-slider v-model="exposure" :min="0" :max="100" />
+          <label v-if="cameraControls?.autoExposureSupported" class="control-switch-row">
+            <span>自动曝光</span>
+            <el-switch
+              v-model="cameraControls.autoExposure"
+              :disabled="updatingControls || !cameraControls.autoExposureWritable"
+              @change="applyAutoExposure"
+            />
           </label>
-          <label>
-            亮度
-            <el-slider v-model="brightness" :min="0" :max="100" />
+          <label
+            v-for="control in controlList"
+            :key="control.key"
+            class="control-slider-row"
+            :class="{ disabled: controlDisabled(control) }"
+          >
+            <span class="control-label">
+              {{ control.label }}
+              <strong>{{ control.supported ? control.value : '不支持' }}</strong>
+            </span>
+            <el-slider
+              v-model="control.value"
+              :min="control.min"
+              :max="control.max"
+              :step="control.step"
+              :disabled="controlDisabled(control)"
+              @change="(value: number | number[]) => applyCameraControl(control, value)"
+            />
           </label>
           <button class="mini-action" type="button" @click="resetCameraParams">
             <RotateCcw :size="15" />恢复默认

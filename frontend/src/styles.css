@@ -218,6 +218,71 @@ button:disabled,
   border-color: #efcaca;
 }
 
+.screenshot-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  overflow: hidden;
+  background: rgba(13, 20, 28, 0.88);
+}
+
+.screenshot-image {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  object-fit: contain;
+  user-select: none;
+}
+
+.screenshot-selection-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.screenshot-selection {
+  position: fixed;
+  border: 2px solid #ffffff;
+  background: rgba(47, 112, 183, 0.18);
+  box-shadow:
+    0 0 0 1px rgba(47, 112, 183, 0.92),
+    0 0 0 9999px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+
+.screenshot-actions {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 2;
+  display: flex;
+  gap: 10px;
+}
+
+.screenshot-action-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: #1d2935;
+  background: #ffffff;
+  border: 1px solid #d8e1e8;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+}
+
+.screenshot-action-btn.primary {
+  color: #ffffff;
+  background: var(--teal);
+  border-color: var(--teal);
+}
+
 .primary-btn,
 .primary-btn.el-button {
   display: inline-flex;
@@ -1088,7 +1153,7 @@ button:disabled,
 
 .shoot-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 144px;
+  grid-template-columns: minmax(0, 1fr) 210px;
   align-items: center;
   gap: 18px;
   flex: 1;
@@ -1165,8 +1230,8 @@ button:disabled,
 .control-panel {
   position: static;
   display: grid;
-  gap: 16px;
-  width: 144px;
+  gap: 14px;
+  width: 210px;
   padding: 16px;
   color: var(--text);
   background: var(--surface);
@@ -1188,6 +1253,32 @@ button:disabled,
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
+}
+
+.control-switch-row {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.control-slider-row.disabled {
+  opacity: 0.62;
+}
+
+.control-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.control-label strong {
+  max-width: 92px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mini-action {

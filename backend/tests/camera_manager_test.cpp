@@ -48,3 +48,33 @@ TEST(CameraManagerTest, CaptureWritesFourViewFiles)
         EXPECT_NE(std::string::npos, readFileText(paths[i]).find("<svg")) << paths[i];
     }
 }
+
+/// 验证模拟相机参数可读取、更新并按范围裁剪。
+TEST(CameraManagerTest, UpdatesMockCameraControls)
+{
+    facescan_test::ScopedTempDir temp("camera_controls");
+    CameraManager camera(temp.path());
+
+    CameraControlState initial = camera.controls();
+    EXPECT_TRUE(initial.autoExposureSupported);
+    EXPECT_TRUE(initial.autoExposure);
+    EXPECT_EQ(42, initial.exposure.value);
+    EXPECT_EQ(12, initial.gain.value);
+    EXPECT_EQ(56, initial.brightness.value);
+
+    CameraControlUpdate update;
+    update.hasAutoExposure = true;
+    update.autoExposure = false;
+    update.hasExposure = true;
+    update.exposure = 500;
+    update.hasGain = true;
+    update.gain = 21;
+    update.hasBrightness = true;
+    update.brightness = -5;
+
+    CameraControlState changed = camera.updateControls(update);
+    EXPECT_FALSE(changed.autoExposure);
+    EXPECT_EQ(100, changed.exposure.value);
+    EXPECT_EQ(21, changed.gain.value);
+    EXPECT_EQ(0, changed.brightness.value);
+}

@@ -104,6 +104,31 @@ int jsonIntValue(const std::string& body, const std::string& key)
     return std::atoi(body.c_str() + pos);
 }
 
+/// 判断简单 JSON 文本中是否包含字段。
+bool jsonHasKey(const std::string& body, const std::string& key)
+{
+    return body.find("\"" + key + "\"") != std::string::npos;
+}
+
+/// 从简单 JSON 文本中查找并解析布尔字段。
+bool jsonBoolValue(const std::string& body, const std::string& key)
+{
+    const std::string needle = "\"" + key + "\"";
+    std::size_t pos = body.find(needle);
+    if (pos == std::string::npos) {
+        return false;
+    }
+    pos = body.find(':', pos + needle.size());
+    if (pos == std::string::npos) {
+        return false;
+    }
+    ++pos;
+    while (pos < body.size() && std::isspace(static_cast<unsigned char>(body[pos]))) {
+        ++pos;
+    }
+    return body.compare(pos, 4, "true") == 0 || body.compare(pos, 1, "1") == 0;
+}
+
 /// 解码查询串中的 percent-encoding 和加号空格。
 std::string urlDecode(const std::string& value)
 {
