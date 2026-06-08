@@ -1477,7 +1477,7 @@ button:disabled,
   grid-column: 1;
   align-items: center;
   justify-content: center;
-  gap: 22px;
+  gap: 14px;
   width: min(100%, 860px);
   margin: 0 auto;
 }
@@ -1487,14 +1487,23 @@ button:disabled,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 58px;
-  height: 58px;
+  gap: 9px;
+  width: 132px;
+  height: 48px;
+  padding: 0 18px;
   color: var(--teal);
   background: #fff;
   border: 1px solid #bfd8d8;
-  border-radius: 50%;
+  border-radius: 999px;
   box-shadow: var(--shadow-soft);
   cursor: pointer;
+}
+
+.shoot-action-btn span {
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .round-action:hover,
@@ -1507,19 +1516,26 @@ button:disabled,
 }
 
 .shoot-action-btn.primary {
-  gap: 10px;
-  width: 154px;
-  padding: 0 24px;
   color: #fff;
-  font-size: 15px;
-  font-weight: 900;
   background: var(--teal);
   border: 1px solid var(--teal);
-  border-radius: 999px;
   box-shadow: 0 12px 28px rgba(8, 123, 125, 0.24);
 }
 
 .shoot-action-btn.primary:hover {
+  background: var(--teal-dark);
+  border-color: var(--teal-dark);
+  box-shadow: 0 16px 30px rgba(8, 123, 125, 0.3);
+}
+
+.shoot-action-btn.next {
+  color: #fff;
+  background: var(--teal);
+  border: 1px solid var(--teal);
+  box-shadow: 0 12px 28px rgba(8, 123, 125, 0.24);
+}
+
+.shoot-action-btn.next:hover {
   background: var(--teal-dark);
   border-color: var(--teal-dark);
   box-shadow: 0 16px 30px rgba(8, 123, 125, 0.3);

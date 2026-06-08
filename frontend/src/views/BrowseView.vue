@@ -93,6 +93,7 @@ function handleDocumentPointerDown(event: PointerEvent) {
 
 /** 按当前过滤条件搜索患者并刷新订单列表。 */
 async function search() {
+  if (searching.value) return
   searching.value = true
   try {
     await loadPatientDashboard(false)
@@ -103,6 +104,7 @@ async function search() {
 
 /** 清空过滤条件并重新搜索。 */
 async function reset() {
+  if (searching.value) return
   filters.keyword = ''
   filters.startDate = ''
   filters.endDate = ''
@@ -413,10 +415,10 @@ async function revealOrderFolder(order: Order) {
           </footer>
         </section>
       </div>
-      <el-button class="soft-btn" :disabled="searching" @click="search">
+      <el-button class="soft-btn" @click="search">
         <Search :size="17" />搜索
       </el-button>
-      <el-button class="soft-btn" :disabled="searching" @click="reset">
+      <el-button class="soft-btn" @click="reset">
         <RotateCcw :size="17" />重置
       </el-button>
       <el-button class="primary-btn new-patient" @click="openBasic()">

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Camera, Pause, Play, RotateCcw, SlidersHorizontal } from 'lucide-vue-next'
+import { ArrowRight, Camera, Pause, Play, RotateCcw, SlidersHorizontal } from 'lucide-vue-next'
 import { ElLoading, ElMessage } from 'element-plus'
 import StepHeader from '../components/StepHeader.vue'
-import { capture, createOrder, fetchCameraControls, fetchOrders, reconstructOrder, startCamera, stopCamera, updateCameraControls } from '../api/client'
+import { capture, createOrder, fetchCameraControls, fetchOrders, fetchScans, reconstructOrder, startCamera, stopCamera, updateCameraControls } from '../api/client'
 import type { CameraControlRange, CameraControlUpdate, CameraControls } from '../types'
 
+const previewFps = 20
 const route = useRoute()
 const router = useRouter()
 /** 当前拍摄患者主键。 */
@@ -15,12 +16,20 @@ const patientId = computed(() => Number(route.params.id))
 const routeOrderId = computed(() => Number(route.query.orderId || 0))
 /** 前端预览刷新开关。 */
 const running = ref(true)
-/** 用于破坏图片缓存的帧时间戳。 */
-const frameTick = ref(Date.now())
+/** 四路预览当前显示的单帧地址。 */
+const frameUrls = ref<Record<string, string>>({})
+/** 预览调度版本，用于让暂停前排队的刷新失效。 */
+const previewGeneration = ref(0)
 /** 当前拍摄订单主键。 */
 const orderId = ref<number>()
-/** 同步采图和点云生成进行中状态。 */
+/** 同步采图进行中状态。 */
 const capturing = ref(false)
+/** 点云生成和跳转进行中状态。 */
+const reconstructing = ref(false)
+/** 当前页面最近一次同步采图成功的订单主键。 */
+const capturedOrderId = ref(0)
+/** 当前订单已保存的采图数量。 */
+const capturedImageCount = ref(0)
 /** 相机参数读取结果。 */
 const cameraControls = ref<CameraControls>()
 /** 相机参数提交状态。 */
@@ -30,9 +39,6 @@ const controlList = computed(() => cameraControls.value ? [
   cameraControls.value.exposure,
   cameraControls.value.gain
 ] : [])
-/** 预览刷新定时器句柄。 */
-let timer = 0
-
 /** 四路相机预览配置。 */
 const cameras = [
   { view: 'left', label: '左侧相机图像' },
@@ -40,10 +46,39 @@ const cameras = [
   { view: 'right', label: '右侧相机图像' },
   { view: 'bottom', label: '下方相机图像' }
 ]
+/** 下一步需要完整四路采图后才允许进入。 */
+const canGoNext = computed(() => capturedImageCount.value >= cameras.length)
 
-/** 构造相机预览 URL，并用时间戳刷新缓存。 */
-function frameUrl() {
-  return `/api/camera/frame?t=${frameTick.value}`
+/** 构造单帧预览 URL，并用时间戳破坏浏览器缓存。 */
+function frameUrl(view: string) {
+  return `/api/camera/frame?view=${encodeURIComponent(view)}&t=${Date.now()}`
+}
+
+/** 更新某一路预览地址。 */
+function requestFrame(view: string) {
+  frameUrls.value = {
+    ...frameUrls.value,
+    [view]: frameUrl(view)
+  }
+}
+
+/** 在上一帧完成加载后再请求下一帧，避免轮询堆积请求。 */
+function scheduleNextFrame(view: string) {
+  if (!running.value) return
+  const generation = previewGeneration.value
+  window.setTimeout(() => {
+    if (running.value && generation === previewGeneration.value) {
+      requestFrame(view)
+    }
+  }, Math.round(1000 / previewFps))
+}
+
+/** 初始化所有预览地址。 */
+function requestAllFrames() {
+  previewGeneration.value += 1
+  for (const camera of cameras) {
+    requestFrame(camera.view)
+  }
 }
 
 /** 启动相机、解析订单并启动预览刷新循环。 */
@@ -67,22 +102,24 @@ onMounted(async () => {
       ElMessage.success(`订单 ${order.orderNo} 已生成`)
     }
   }
-  timer = window.setInterval(() => {
-    if (running.value) {
-      frameTick.value = Date.now()
-    }
-  }, 100)
+  await refreshCapturedImageCount()
+  requestAllFrames()
 })
 
 /** 离开页面时停止刷新和后端相机预览。 */
 onBeforeUnmount(async () => {
-  window.clearInterval(timer)
   await stopCamera()
 })
 
 /** 暂停或恢复前端预览刷新。 */
 function toggle() {
-  running.value = !running.value
+  if (running.value) {
+    previewGeneration.value += 1
+    running.value = false
+    return
+  }
+  running.value = true
+  requestAllFrames()
 }
 
 /** 读取设备当前相机参数。 */
@@ -91,6 +128,25 @@ async function loadCameraControls() {
     cameraControls.value = await fetchCameraControls()
   } catch (error) {
     ElMessage.warning(error instanceof Error ? error.message : '相机参数读取失败')
+  }
+}
+
+/** 刷新当前订单已经保存的采图数量。 */
+async function refreshCapturedImageCount() {
+  if (!orderId.value) {
+    capturedImageCount.value = 0
+    return
+  }
+  try {
+    const scans = await fetchScans(patientId.value)
+    const scan = scans.find((item) => item.orderId === orderId.value && item.imagePaths?.length)
+    capturedImageCount.value = scan?.imagePaths?.length ?? 0
+    if (capturedImageCount.value >= cameras.length) {
+      capturedOrderId.value = orderId.value
+    }
+  } catch (error) {
+    capturedImageCount.value = 0
+    ElMessage.warning(error instanceof Error ? error.message : '采图状态读取失败')
   }
 }
 
@@ -150,22 +206,49 @@ async function resetCameraParams() {
   await saveCameraControls(update)
 }
 
-/** 执行同步采图、点云重建，并进入点云查看页。 */
+/** 执行同步采图并保存订单图像。 */
 async function shoot() {
+  if (capturing.value) return
+  previewGeneration.value += 1
+  running.value = false
   capturing.value = true
   const loading = ElLoading.service({
     lock: true,
-    text: '同步采图完成后正在生成彩色点云...',
+    text: '正在同步采图并保存图像...',
     background: 'rgba(238, 242, 245, 0.74)'
   })
   try {
     const result = await capture(patientId.value, orderId.value)
-    const pointCloud = await reconstructOrder(result.orderId)
+    orderId.value = result.orderId
+    capturedOrderId.value = result.orderId
+    capturedImageCount.value = result.paths.length
+    ElMessage.success(`同步拍摄完成，已保存 ${result.paths.length} 张图像`)
+  } catch (error) {
+    capturedImageCount.value = 0
+    ElMessage.error(error instanceof Error ? error.message : '同步拍摄失败')
+  } finally {
+    loading.close()
+    capturing.value = false
+  }
+}
+
+/** 根据已保存图像生成点云，并进入三维处理页。 */
+async function goPointCloud() {
+  const targetOrderId = capturedOrderId.value || orderId.value
+  if (!targetOrderId || reconstructing.value || !canGoNext.value) return
+  reconstructing.value = true
+  const loading = ElLoading.service({
+    lock: true,
+    text: '正在生成彩色点云...',
+    background: 'rgba(238, 242, 245, 0.74)'
+  })
+  try {
+    const pointCloud = await reconstructOrder(targetOrderId)
     ElMessage.success(`点云生成完成，${pointCloud.pointCount} 个点`)
     router.push({
       path: `/pointcloud/${patientId.value}`,
       query: {
-        orderId: String(result.orderId),
+        orderId: String(targetOrderId),
         plyPath: pointCloud.plyPath
       }
     })
@@ -173,7 +256,7 @@ async function shoot() {
     ElMessage.error(error instanceof Error ? error.message : '点云生成失败')
   } finally {
     loading.close()
-    capturing.value = false
+    reconstructing.value = false
   }
 }
 </script>
@@ -190,7 +273,7 @@ async function shoot() {
             class="camera-panel"
             :class="camera.view"
           >
-            <img :src="frameUrl()" :alt="camera.label" />
+            <img :src="frameUrls[camera.view]" :alt="camera.label" @load="scheduleNextFrame(camera.view)" @error="scheduleNextFrame(camera.view)" />
             <span class="camera-name">{{ camera.label }}</span>
             <span class="camera-badge">{{ running ? '实时彩色流' : '已暂停' }}</span>
           </div>
@@ -234,13 +317,18 @@ async function shoot() {
       </div>
       <footer class="shoot-actions">
         <div class="shoot-action-cluster">
-          <button class="shoot-action-btn" title="暂停/继续" type="button" :aria-pressed="!running" @click="toggle">
-            <Pause v-if="running" :size="28" />
-            <Play v-else :size="28" />
+          <button class="shoot-action-btn" :title="running ? '暂停预览' : '继续预览'" type="button" :aria-pressed="!running" @click="toggle">
+            <Pause v-if="running" :size="22" />
+            <Play v-else :size="22" />
+            <span>{{ running ? '暂停' : '继续' }}</span>
           </button>
           <button class="shoot-action-btn primary" title="同步拍摄" type="button" :disabled="capturing" @click="shoot">
-            <Camera :size="26" />
-            <span>同步拍摄</span>
+            <Camera :size="22" />
+            <span>{{ capturing ? '保存中' : '同步拍摄' }}</span>
+          </button>
+          <button class="shoot-action-btn next" title="生成点云并进入下一步" type="button" :disabled="capturing || reconstructing || !orderId || !canGoNext" @click="goPointCloud">
+            <ArrowRight :size="22" />
+            <span>{{ reconstructing ? '处理中' : '下一步' }}</span>
           </button>
         </div>
       </footer>
