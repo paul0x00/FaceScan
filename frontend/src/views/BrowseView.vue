@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { CalendarDays, ChevronDown, CirclePlus, ClipboardList, Edit, FolderOpen, RotateCcw, Search, Stethoscope, Trash2, UserPlus, UserRound } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -19,6 +19,8 @@ const filters = reactive({
 })
 /** 日期范围弹层是否展开。 */
 const datePanelOpen = ref(false)
+/** 日期范围控件根节点，用于判断外部点击。 */
+const dateRangeRef = ref<HTMLElement>()
 /** 日期范围临时选择，点击应用后才写入检索条件。 */
 const dateDraft = reactive({
   startDate: '',
@@ -51,7 +53,14 @@ const datePresets = [
 /** 当前选中患者；未选中时回退到第一位患者。 */
 const selected = computed(() => store.patients.find((item) => item.id === activeId.value) ?? store.patients[0])
 
-onMounted(() => loadPatientDashboard(true))
+onMounted(() => {
+  document.addEventListener('pointerdown', handleDocumentPointerDown)
+  loadPatientDashboard(true)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', handleDocumentPointerDown)
+})
 
 /** 切换患者时自动刷新右侧订单列表。 */
 watch(activeId, () => {
@@ -65,6 +74,22 @@ watch(datePanelOpen, (visible) => {
   dateDraft.endDate = filters.endDate
   dateDraft.preset = matchedPreset(filters.startDate, filters.endDate)
 })
+
+/** 打开日期范围弹层。 */
+function showDatePanel() {
+  if (datePanelOpen.value) return
+  datePanelOpen.value = true
+}
+
+/** 点击日期控件外部时关闭日期面板。 */
+function handleDocumentPointerDown(event: PointerEvent) {
+  if (!datePanelOpen.value) return
+  const target = event.target as HTMLElement | null
+  if (target && dateRangeRef.value?.contains(target)) return
+  if (target?.closest('.el-picker-panel')) return
+  commitDateDraft()
+  datePanelOpen.value = false
+}
 
 /** 按当前过滤条件搜索患者并刷新订单列表。 */
 async function search() {
@@ -184,8 +209,8 @@ function handleDraftDateChange() {
   dateDraft.preset = matchedPreset(dateDraft.startDate, dateDraft.endDate)
 }
 
-/** 应用日期范围筛选。 */
-async function applyDateRange() {
+/** 将日期草稿写入当前筛选条件。 */
+function commitDateDraft() {
   if (dateDraft.startDate && dateDraft.endDate && dateDraft.startDate > dateDraft.endDate) {
     const previousStart = dateDraft.startDate
     dateDraft.startDate = dateDraft.endDate
@@ -193,6 +218,12 @@ async function applyDateRange() {
   }
   filters.startDate = dateDraft.startDate
   filters.endDate = dateDraft.endDate
+}
+
+/** 应用日期范围筛选。 */
+async function applyDateRange() {
+  if (searching.value) return
+  commitDateDraft()
   datePanelOpen.value = false
   await search()
 }
@@ -326,26 +357,19 @@ async function revealOrderFolder(order: Order) {
 
     <section class="browse-toolbar">
       <el-input v-model="filters.keyword" class="keyword-input" placeholder="患者编号 / 姓名 / 医生" clearable />
-      <el-popover
-        v-model:visible="datePanelOpen"
-        popper-class="date-range-popper"
-        placement="bottom-start"
-        :width="430"
-        persistent
-        trigger="click"
-      >
-        <template #reference>
-          <button
-            class="date-range-trigger"
-            :class="{ active: datePanelOpen || filters.startDate || filters.endDate }"
-            type="button"
-          >
-            <CalendarDays :size="18" />
-            <span>{{ dateRangeLabel }}</span>
-            <ChevronDown :size="17" class="date-chevron" :class="{ open: datePanelOpen }" />
-          </button>
-        </template>
-        <section class="date-range-panel">
+      <div ref="dateRangeRef" class="date-range-control">
+        <button
+          class="date-range-trigger"
+          :class="{ active: datePanelOpen || filters.startDate || filters.endDate }"
+          type="button"
+          :aria-expanded="datePanelOpen"
+          @click.stop="showDatePanel"
+        >
+          <CalendarDays :size="18" />
+          <span>{{ dateRangeLabel }}</span>
+          <ChevronDown :size="17" class="date-chevron" :class="{ open: datePanelOpen }" />
+        </button>
+        <section v-if="datePanelOpen" class="date-range-panel" @click.stop>
           <div class="date-preset-grid">
             <button
               v-for="preset in datePresets"
@@ -388,7 +412,7 @@ async function revealOrderFolder(order: Order) {
             <button class="primary-btn date-apply-btn" type="button" @click="applyDateRange">应用</button>
           </footer>
         </section>
-      </el-popover>
+      </div>
       <el-button class="soft-btn" :disabled="searching" @click="search">
         <Search :size="17" />搜索
       </el-button>

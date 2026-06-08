@@ -80,7 +80,7 @@ function preventReadonlyFocus(event: Event) {
 </script>
 
 <template>
-  <main class="workflow-page">
+  <main class="workflow-page send-page">
     <StepHeader active="send" />
     <FormPanel>
       <header class="form-heading">

@@ -138,7 +138,7 @@ async function submit() {
 </script>
 
 <template>
-  <main class="workflow-page">
+  <main class="workflow-page basic-info-page">
     <StepHeader active="basic" />
     <FormPanel>
       <header class="form-heading">
