@@ -13,6 +13,14 @@ FRONTEND_LOG_FILE="$LOG_DIR/facescan-frontend.log"
 BACKEND_PORT="${BACKEND_PORT:-8080}"
 FRONTEND_HOST="${FRONTEND_HOST:-127.0.0.1}"
 
+ensure_sudo() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    return
+  fi
+
+  sudo -v
+}
+
 is_running() {
   local pid_file="$1"
   if [[ ! -f "$pid_file" ]]; then
@@ -29,11 +37,21 @@ is_running() {
     return 0
   fi
 
+  if sudo kill -0 "$pid" >/dev/null 2>&1; then
+    return 0
+  fi
+
   rm -f "$pid_file"
   return 1
 }
 
+quote_shell_arg() {
+  printf "%q" "$1"
+}
+
 start_backend() {
+  ensure_sudo
+
   if is_running "$BACKEND_PID_FILE"; then
     echo "Backend is already running with PID $(cat "$BACKEND_PID_FILE")."
     return
@@ -42,8 +60,21 @@ start_backend() {
   cmake -S "$ROOT_DIR/backend" -B "$BACKEND_BUILD_DIR" -G Ninja
   cmake --build "$BACKEND_BUILD_DIR"
 
-  nohup "$BACKEND_BIN" "$BACKEND_PORT" >"$BACKEND_LOG_FILE" 2>&1 &
-  echo $! >"$BACKEND_PID_FILE"
+  local backend_cmd
+  local backend_pid
+  printf -v backend_cmd 'cd %s && { nohup %s %s >>%s 2>&1 < /dev/null & echo $!; }' \
+    "$(quote_shell_arg "$ROOT_DIR")" \
+    "$(quote_shell_arg "$BACKEND_BIN")" \
+    "$(quote_shell_arg "$BACKEND_PORT")" \
+    "$(quote_shell_arg "$BACKEND_LOG_FILE")"
+  backend_pid="$(sudo bash -lc "$backend_cmd")"
+  backend_pid="${backend_pid//$'\r'/}"
+  backend_pid="${backend_pid//$'\n'/}"
+  if [[ -z "$backend_pid" ]]; then
+    echo "Failed to capture backend pid."
+    exit 1
+  fi
+  printf '%s\n' "$backend_pid" >"$BACKEND_PID_FILE"
   sleep 1
 
   if ! is_running "$BACKEND_PID_FILE"; then
@@ -51,7 +82,7 @@ start_backend() {
     exit 1
   fi
 
-  echo "Backend started on http://127.0.0.1:$BACKEND_PORT"
+  echo "Backend started as root on http://127.0.0.1:$BACKEND_PORT"
 }
 
 start_frontend() {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/models.hpp"
+#include "../common/models.hpp"
 
 #include <sqlite3.h>
 
@@ -75,6 +75,8 @@ private:
     void execIgnoreError(const std::string& sql);
     /// 表缺少字段时补充字段，用于轻量迁移。
     void addColumnIfMissing(const std::string& table, const std::string& column, const std::string& type);
+    /// 清理同一患者下重复订单号的冗余订单，优先保留有扫描数据和较早创建的记录。
+    void deduplicateOrdersUnlocked();
     /// 预编译 SQL 语句，失败时抛出异常。
     sqlite3_stmt* prepare(const std::string& sql);
     /// 执行语句并要求结果为 SQLITE_DONE。

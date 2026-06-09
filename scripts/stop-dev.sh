@@ -25,6 +25,13 @@ stop_process() {
   fi
 
   if kill -0 "$pid" >/dev/null 2>&1; then
+    if [[ "$name" == "Backend" ]]; then
+      local child_pid=""
+      child_pid="$(pgrep -P "$pid" 2>/dev/null | head -n 1 || true)"
+      if [[ -n "$child_pid" ]]; then
+        kill "$child_pid" >/dev/null 2>&1 || true
+      fi
+    fi
     kill "$pid" >/dev/null 2>&1 || true
     for _ in 1 2 3 4 5; do
       if ! kill -0 "$pid" >/dev/null 2>&1; then
@@ -34,6 +41,25 @@ stop_process() {
     done
     if kill -0 "$pid" >/dev/null 2>&1; then
       kill -9 "$pid" >/dev/null 2>&1 || true
+    fi
+    echo "$name stopped."
+  elif sudo kill -0 "$pid" >/dev/null 2>&1; then
+    if [[ "$name" == "Backend" ]]; then
+      local child_pid=""
+      child_pid="$(sudo pgrep -P "$pid" 2>/dev/null | head -n 1 || true)"
+      if [[ -n "$child_pid" ]]; then
+        sudo kill "$child_pid" >/dev/null 2>&1 || true
+      fi
+    fi
+    sudo kill "$pid" >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5; do
+      if ! sudo kill -0 "$pid" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
+    if sudo kill -0 "$pid" >/dev/null 2>&1; then
+      sudo kill -9 "$pid" >/dev/null 2>&1 || true
     fi
     echo "$name stopped."
   else

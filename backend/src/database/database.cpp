@@ -4,6 +4,7 @@
 #include "../common/time_utils.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <map>
 #include <set>
 #include <sstream>
@@ -29,8 +30,10 @@ Database::Database(const std::string& filePath) : db_(NULL)
          "phone TEXT,"
          "doctor TEXT,"
          "remark TEXT,"
+         "next_order_sequence INTEGER DEFAULT 1,"
          "created_at TEXT NOT NULL"
          ");");
+    addColumnIfMissing("patient", "next_order_sequence", "INTEGER DEFAULT 1");
     exec("CREATE TABLE IF NOT EXISTS orders ("
          "id INTEGER PRIMARY KEY AUTOINCREMENT,"
          "patient_id INTEGER NOT NULL,"
@@ -42,6 +45,11 @@ Database::Database(const std::string& filePath) : db_(NULL)
     addColumnIfMissing("orders", "order_no", "TEXT");
     exec("UPDATE orders SET order_no=(SELECT patient_no FROM patient WHERE patient.id=orders.patient_id)||'-'||id "
          "WHERE order_no IS NULL OR order_no='';");
+    execIgnoreError(
+        "UPDATE patient SET next_order_sequence=("
+        "SELECT COALESCE(MAX(CAST(substr(order_no, length(patient.patient_no) + 2) AS INTEGER)), 0) + 1 "
+        "FROM orders WHERE orders.patient_id=patient.id AND order_no LIKE patient.patient_no || '-%') "
+        "WHERE next_order_sequence IS NULL OR next_order_sequence < 1;");
     exec("CREATE TABLE IF NOT EXISTS scan_result ("
          "id INTEGER PRIMARY KEY AUTOINCREMENT,"
          "order_id INTEGER NOT NULL,"
@@ -52,6 +60,8 @@ Database::Database(const std::string& filePath) : db_(NULL)
          "FOREIGN KEY(order_id) REFERENCES orders(id)"
          ");");
     addColumnIfMissing("scan_result", "image_paths", "TEXT");
+    deduplicateOrdersUnlocked();
+    exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_patient_order_no ON orders(patient_id, order_no);");
     seed();
 }
 
@@ -858,18 +868,32 @@ void Database::replaceOrderScanUnlocked(int orderId, const DataRootOrder& order)
 int Database::createOrderUnlocked(int patientId)
 {
     const std::string patientNo = patientNoUnlocked(patientId);
-    const int sequence = nextOrderSequenceUnlocked(patientId);
-    const std::string orderNo = patientNo + "-" + toString(sequence);
-    sqlite3_stmt* stmt = prepare("INSERT INTO orders(patient_id,order_no,status,created_at) VALUES(?,?,?,?)");
-    const std::string status = "created";
-    const std::string created = nowText();
-    sqlite3_bind_int(stmt, 1, patientId);
-    sqlite3_bind_text(stmt, 2, orderNo.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 3, status.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 4, created.c_str(), -1, SQLITE_TRANSIENT);
-    stepDone(stmt);
-    sqlite3_finalize(stmt);
-    return static_cast<int>(sqlite3_last_insert_rowid(db_));
+    int sequence = nextOrderSequenceUnlocked(patientId);
+    for (int attempt = 0; attempt < 1024; ++attempt) {
+        const std::string orderNo = patientNo + "-" + toString(sequence);
+        sqlite3_stmt* stmt = prepare("INSERT INTO orders(patient_id,order_no,status,created_at) VALUES(?,?,?,?)");
+        const std::string status = "created";
+        const std::string created = nowText();
+        sqlite3_bind_int(stmt, 1, patientId);
+        sqlite3_bind_text(stmt, 2, orderNo.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, status.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 4, created.c_str(), -1, SQLITE_TRANSIENT);
+        const int stepCode = sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+        if (stepCode == SQLITE_DONE) {
+            sqlite3_stmt* updatePatientStmt = prepare("UPDATE patient SET next_order_sequence=? WHERE id=?");
+            sqlite3_bind_int(updatePatientStmt, 1, sequence + 1);
+            sqlite3_bind_int(updatePatientStmt, 2, patientId);
+            stepDone(updatePatientStmt);
+            sqlite3_finalize(updatePatientStmt);
+            return static_cast<int>(sqlite3_last_insert_rowid(db_));
+        }
+        if (stepCode != SQLITE_CONSTRAINT && stepCode != SQLITE_CONSTRAINT_UNIQUE) {
+            throw std::runtime_error(sqlite3_errmsg(db_));
+        }
+        ++sequence;
+    }
+    throw std::runtime_error("Unable to allocate unique order number");
 }
 
 /// 读取患者编号，缺失时生成临时编号兜底。
@@ -888,14 +912,85 @@ std::string Database::patientNoUnlocked(int patientId)
 /// 计算患者下一个订单序号。
 int Database::nextOrderSequenceUnlocked(int patientId)
 {
-    sqlite3_stmt* stmt = prepare("SELECT COUNT(*) FROM orders WHERE patient_id=?");
+    sqlite3_stmt* stmt = prepare("SELECT next_order_sequence FROM patient WHERE id=?");
     sqlite3_bind_int(stmt, 1, patientId);
-    int count = 0;
+    int nextSequence = 1;
     if (sqlite3_step(stmt) == SQLITE_ROW) {
-        count = sqlite3_column_int(stmt, 0);
+        nextSequence = sqlite3_column_int(stmt, 0);
     }
     sqlite3_finalize(stmt);
-    return count + 1;
+
+    sqlite3_stmt* orderStmt = prepare("SELECT order_no FROM orders WHERE patient_id=?");
+    sqlite3_bind_int(orderStmt, 1, patientId);
+    int maxExistingSequence = 0;
+    while (sqlite3_step(orderStmt) == SQLITE_ROW) {
+        const std::string orderNoValue = columnText(orderStmt, 0);
+        const std::size_t dashPos = orderNoValue.find_last_of('-');
+        if (dashPos == std::string::npos || dashPos + 1 >= orderNoValue.size()) {
+            continue;
+        }
+        const int sequence = std::atoi(orderNoValue.substr(dashPos + 1).c_str());
+        if (sequence > maxExistingSequence) {
+            maxExistingSequence = sequence;
+        }
+    }
+    sqlite3_finalize(orderStmt);
+
+    const int fallbackSequence = maxExistingSequence + 1;
+    if (nextSequence < fallbackSequence) {
+        nextSequence = fallbackSequence;
+    }
+    return nextSequence > 0 ? nextSequence : 1;
+}
+
+void Database::deduplicateOrdersUnlocked()
+{
+    sqlite3_stmt* stmt = prepare(
+        "SELECT patient_id, order_no FROM orders "
+        "WHERE order_no IS NOT NULL AND order_no<>'' "
+        "GROUP BY patient_id, order_no HAVING COUNT(*) > 1");
+    std::vector<std::pair<int, std::string> > duplicates;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        duplicates.push_back(std::make_pair(sqlite3_column_int(stmt, 0), columnText(stmt, 1)));
+    }
+    sqlite3_finalize(stmt);
+
+    for (std::size_t i = 0; i < duplicates.size(); ++i) {
+        sqlite3_stmt* groupStmt = prepare(
+            "SELECT orders.id, "
+            "(SELECT COUNT(*) FROM scan_result WHERE order_id=orders.id) AS scan_count, "
+            "(SELECT COUNT(*) FROM scan_result WHERE order_id=orders.id AND "
+            "(ifnull(ply_path,'')<>'' OR ifnull(image_paths,'')<>'' OR ifnull(preview_path,'')<>'')) AS data_count, "
+            "orders.created_at "
+            "FROM orders WHERE patient_id=? AND order_no=? "
+            "ORDER BY data_count DESC, scan_count DESC, orders.created_at ASC, orders.id ASC");
+        sqlite3_bind_int(groupStmt, 1, duplicates[i].first);
+        sqlite3_bind_text(groupStmt, 2, duplicates[i].second.c_str(), -1, SQLITE_TRANSIENT);
+
+        bool keepFirst = true;
+        std::vector<int> removeIds;
+        while (sqlite3_step(groupStmt) == SQLITE_ROW) {
+            const int orderId = sqlite3_column_int(groupStmt, 0);
+            if (keepFirst) {
+                keepFirst = false;
+                continue;
+            }
+            removeIds.push_back(orderId);
+        }
+        sqlite3_finalize(groupStmt);
+
+        for (std::size_t j = 0; j < removeIds.size(); ++j) {
+            sqlite3_stmt* deleteScanStmt = prepare("DELETE FROM scan_result WHERE order_id=?");
+            sqlite3_bind_int(deleteScanStmt, 1, removeIds[j]);
+            stepDone(deleteScanStmt);
+            sqlite3_finalize(deleteScanStmt);
+
+            sqlite3_stmt* deleteOrderStmt = prepare("DELETE FROM orders WHERE id=?");
+            sqlite3_bind_int(deleteOrderStmt, 1, removeIds[j]);
+            stepDone(deleteOrderStmt);
+            sqlite3_finalize(deleteOrderStmt);
+        }
+    }
 }
 
 /// 基于毫秒时间戳生成不重复患者编号。

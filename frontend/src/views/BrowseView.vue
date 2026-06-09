@@ -332,6 +332,12 @@ async function removeOrder(order: Order) {
   }
   await deleteOrder(order.id)
   ElMessage.success('订单已删除')
+  await store.load({
+    keyword: filters.keyword,
+    startDate: filters.startDate,
+    endDate: filters.endDate
+  })
+  activeId.value = order.patientId
   await loadOrders()
 }
 
