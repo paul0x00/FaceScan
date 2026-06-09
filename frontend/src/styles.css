@@ -1652,63 +1652,23 @@ button:disabled,
 }
 
 .pointcloud-workspace {
-  display: grid;
-  grid-template-columns: 380px minmax(0, 1fr);
-  gap: 18px;
   height: calc(100% - 64px);
-  padding: 18px;
-}
-
-.pointcloud-workspace .form-panel {
-  width: 100%;
-  min-height: 0;
-  margin: 0;
-}
-
-.pointcloud-toolbar {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.pointcloud-toolbar .soft-btn {
-  width: 100%;
-}
-
-.pointcloud-meta {
-  display: grid;
-  gap: 8px;
-  padding: 12px 14px;
-  background: var(--surface-soft);
-  border: 1px solid var(--line);
-  border-radius: 7px;
-}
-
-.pointcloud-meta span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--teal);
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.pointcloud-meta strong {
-  overflow-wrap: anywhere;
-  color: var(--text);
-  font-size: 13px;
-  line-height: 1.45;
+  padding: 20px 18px 18px;
 }
 
 .pointcloud-stage {
   position: relative;
-  min-width: 0;
-  min-height: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   background: #f4f8fa;
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--shadow-soft);
+}
+
+.pointcloud-stage--workspace {
+  background: linear-gradient(180deg, #f4f8fa 0%, #edf3f6 100%);
 }
 
 .pointcloud-viewer {
@@ -1718,6 +1678,178 @@ button:disabled,
 
 .pointcloud-viewer canvas {
   display: block;
+}
+
+.pointcloud-stage-pill {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  z-index: 2;
+}
+
+.pointcloud-stage-pill .status-pill {
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+
+.pointcloud-toolrail {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 2;
+  display: grid;
+  gap: 12px;
+}
+
+.pointcloud-toolbtn {
+  position: relative;
+  justify-content: flex-start;
+  min-width: 124px;
+  height: 46px;
+  padding: 0 14px;
+  background: rgba(255, 255, 255, 0.94);
+  border-color: #d4dee6;
+  border-radius: 10px;
+  box-shadow: 0 10px 20px rgba(51, 65, 85, 0.1);
+  backdrop-filter: blur(8px);
+}
+
+.pointcloud-toolbtn span {
+  white-space: nowrap;
+}
+
+.pointcloud-toolbtn::before {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(244, 248, 250, 0));
+  content: "";
+  pointer-events: none;
+}
+
+.pointcloud-toolbtn svg,
+.pointcloud-toolbtn span {
+  position: relative;
+  z-index: 1;
+}
+
+.pointcloud-toolbtn.active {
+  color: var(--teal);
+  background: #eaf7f6;
+  border-color: #c8e5e2;
+  box-shadow: 0 12px 22px rgba(15, 127, 130, 0.14);
+}
+
+.pointcloud-viewpanel {
+  position: absolute;
+  top: 114px;
+  right: 116px;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(2, 52px);
+  gap: 12px;
+  padding: 14px;
+  background: rgba(247, 250, 252, 0.96);
+  border: 1px solid #d4dee6;
+  border-radius: 12px;
+  box-shadow: 0 16px 30px rgba(51, 65, 85, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.pointcloud-viewcell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  color: #5f707f;
+  background: linear-gradient(180deg, #ffffff 0%, #f3f8fa 100%);
+  border: 1px solid #d4dee6;
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.pointcloud-viewcell:hover {
+  color: var(--blue);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbfd 100%);
+  border-color: #9fc1e5;
+}
+
+.pointcloud-viewcell.active {
+  color: var(--teal);
+  background: linear-gradient(180deg, #f0fbfa 0%, #e5f6f4 100%);
+  border-color: #c8e5e2;
+}
+
+.pointcloud-viewcell:disabled {
+  color: #94a1ad;
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.cube-view-icon {
+  width: 36px;
+  height: 36px;
+  overflow: visible;
+}
+
+.cube-view-fill {
+  fill: transparent;
+}
+
+.cube-view-wire {
+  fill: none;
+  stroke: #657787;
+  stroke-width: 3.1;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.cube-view-icon--back .cube-fill-back,
+.cube-view-icon--down .cube-fill-down,
+.cube-view-icon--front .cube-fill-front,
+.cube-view-icon--left .cube-fill-left,
+.cube-view-icon--right .cube-fill-right,
+.cube-view-icon--up .cube-fill-up {
+  fill: #d8e3ea;
+}
+
+.pointcloud-viewcell.active .cube-view-wire {
+  stroke: var(--teal);
+}
+
+.pointcloud-viewcell.active .cube-view-icon--back .cube-fill-back,
+.pointcloud-viewcell.active .cube-view-icon--down .cube-fill-down,
+.pointcloud-viewcell.active .cube-view-icon--front .cube-fill-front,
+.pointcloud-viewcell.active .cube-view-icon--left .cube-fill-left,
+.pointcloud-viewcell.active .cube-view-icon--right .cube-fill-right,
+.pointcloud-viewcell.active .cube-view-icon--up .cube-fill-up {
+  fill: #bfe8d8;
+}
+
+.pointcloud-hintbar {
+  position: absolute;
+  bottom: 18px;
+  left: 18px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  height: 40px;
+  padding: 0 20px;
+  color: #6e7d8b;
+  font-size: 13px;
+  font-weight: 800;
+  background: rgba(247, 250, 252, 0.94);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(6px);
 }
 
 .pointcloud-overlay {
@@ -1734,6 +1866,27 @@ button:disabled,
 
 .pointcloud-overlay.error {
   color: var(--red);
+}
+
+@media (max-width: 1120px) {
+  .pointcloud-toolrail {
+    top: auto;
+    right: 18px;
+    bottom: 18px;
+    grid-auto-flow: column;
+  }
+
+  .pointcloud-viewpanel {
+    right: 18px;
+    bottom: 72px;
+    top: auto;
+  }
+
+  .pointcloud-hintbar {
+    right: 18px;
+    left: 18px;
+    justify-content: center;
+  }
 }
 
 .settings-header {
