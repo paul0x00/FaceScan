@@ -57,7 +57,11 @@ start_backend() {
     return
   fi
 
-  cmake -S "$ROOT_DIR/backend" -B "$BACKEND_BUILD_DIR" -G Ninja
+  local cmake_args=(-S "$ROOT_DIR/backend" -B "$BACKEND_BUILD_DIR" -G Ninja)
+  if [[ -n "${VCPKG_ROOT:-}" && -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]]; then
+    cmake_args+=(-DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake")
+  fi
+  cmake "${cmake_args[@]}"
   cmake --build "$BACKEND_BUILD_DIR"
 
   local backend_cmd

@@ -1,0 +1,12 @@
+{
+  "name": "facescan-backend",
+  "version-string": "0.1.0",
+  "builtin-baseline": "b216ddff25a1f432870e6c340ce79357049ef86e",
+  "dependencies": [
+    "boost-asio",
+    "boost-beast",
+    "gtest",
+    "sqlite3",
+    "zlib"
+  ]
+}
