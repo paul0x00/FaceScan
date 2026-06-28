@@ -4,6 +4,8 @@ backend/build/
 backend/config/app.json
 backend/3rdParty/*
 !backend/3rdParty/README.md
+!backend/3rdParty/orbbec/
+!backend/3rdParty/orbbec/**
 vcpkg_installed/
 backend/data/*
 !backend/data/db/

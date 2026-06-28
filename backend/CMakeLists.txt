@@ -13,6 +13,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 find_package(Boost REQUIRED)
 find_package(SQLite3 REQUIRED)
 find_package(ZLIB REQUIRED)
@@ -98,15 +102,10 @@ if(UNIX)
 endif()
 
 if(ORBBEC_SDK_LIB AND WIN32)
-    # Windows 下 SDK 以动态库分发，构建后把 dll 复制到可执行文件目录
+    # Windows SDK ships runtime files separately from the import library.
     file(GLOB ORBBEC_SDK_RUNTIME
         "${FACESCAN_ORBBEC_SDK_DIR}/bin/*.dll"
         "${FACESCAN_ORBBEC_SDK_DIR}/bin/*.xml")
-    if(ORBBEC_SDK_RUNTIME)
-        add_custom_command(TARGET facescan_backend POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${ORBBEC_SDK_RUNTIME} $<TARGET_FILE_DIR:facescan_backend>)
-    endif()
 endif()
 
 if(BUILD_TESTING)
@@ -147,6 +146,18 @@ if(BUILD_TESTING)
         GTest::gtest_main
     )
 
+    if(ORBBEC_SDK_RUNTIME)
+        add_custom_command(TARGET facescan_tests POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${ORBBEC_SDK_RUNTIME} $<TARGET_FILE_DIR:facescan_tests>)
+    endif()
+
     include(GoogleTest)
     gtest_discover_tests(facescan_tests)
+endif()
+
+if(ORBBEC_SDK_RUNTIME)
+    add_custom_command(TARGET facescan_backend POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${ORBBEC_SDK_RUNTIME} $<TARGET_FILE_DIR:facescan_backend>)
 endif()
