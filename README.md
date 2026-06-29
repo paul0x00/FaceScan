@@ -31,19 +31,31 @@ git clone https://github.com/microsoft/vcpkg.git ~/vcpkg
 export VCPKG_ROOT="$HOME/vcpkg"               # 建议写入 shell 配置；Windows 设置系统环境变量
 ```
 
-第三方依赖（Boost.Beast/Asio、SQLite3、ZLIB、GoogleTest）声明在 `backend/vcpkg.json`，由 `builtin-baseline` 锁定版本，macOS 与 Windows 构建结果一致。
+第三方依赖（Boost.Beast/Asio、SQLite3、ZLIB、GoogleTest）声明在 `backend/vcpkg.json`，由 `builtin-baseline` 锁定版本。首次配置时 vcpkg 会把依赖安装到 `backend/build/vcpkg_installed/`，该目录是本地构建产物，不进入版本库。
 
-Orbbec SDK 是厂商闭源包，不经 vcpkg 也不入 git，按平台放在 `backend/3rdParty/orbbec/` 下（布局见 `backend/3rdParty/README.md`）；缺失时后端自动以 `mock` 相机模式运行。
+Orbbec SDK 是厂商闭源预编译包，不经 vcpkg 管理。当前仓库已提交 Windows 与 macOS 平台 SDK，位置为 `backend/3rdParty/orbbec/windows` 和 `backend/3rdParty/orbbec/macos`；目录布局见 `backend/3rdParty/README.md`。Linux SDK 仍预留为手工补充。
 
 ### 1. 构建并启动后端
 
+Windows 推荐使用 MSVC / Visual Studio 2022 工具链：
+
+```powershell
+$env:VCPKG_ROOT = "C:\src\vcpkg"
+cmake -S backend --preset windows
+cmake --build backend/build --config Release
+.\backend\build\Release\facescan_backend.exe 8080
+```
+
+macOS 使用 vcpkg + Ninja 预设：
+
 ```bash
-cmake -S backend --preset macos     # Windows 使用 --preset windows（VS 2022 生成器）
-cmake --build backend/build         # Windows 多配置产物位于 backend/build/Release/
+export VCPKG_ROOT="$HOME/vcpkg"
+cmake -S backend --preset macos
+cmake --build backend/build
 ./backend/build/facescan_backend 8080
 ```
 
-首次配置会自动安装 vcpkg 依赖（需联网，约几分钟）。未安装 vcpkg 时可回退系统依赖（macOS 需 Homebrew 安装 `boost`、`sqlite3`、`zlib`）：`cmake -S backend -B backend/build -G Ninja`。注意两种工具链之间切换需先删除 `backend/build/`。
+首次配置会自动安装 vcpkg 依赖（需联网，约几分钟）。未安装 vcpkg 时可回退系统依赖（macOS 需 Homebrew 安装 `boost`、`sqlite3`、`zlib`）：`cmake -S backend -B backend/build -G Ninja`。注意两种工具链或生成器之间切换需先删除 `backend/build/`。
 
 启动成功后，后端监听 `http://127.0.0.1:8080`。如果不传端口参数，会读取 `backend/config/app.json` 或 `backend/config/app.example.json` 中的 `backendPort`。
 
@@ -107,7 +119,7 @@ ctest --test-dir backend/build --output-on-failure
 ```text
 .
 ├── backend/
-│   ├── 3rdParty/          # Orbbec SDK（按平台手工放置，不入库，见其 README.md）
+│   ├── 3rdParty/          # Orbbec SDK（Windows/macOS 已随仓库提交，见其 README.md）
 │   ├── config/            # 后端配置示例和本地配置
 │   ├── data/              # SQLite、采集图片、点云和预览图
 │   ├── src/
@@ -127,7 +139,7 @@ ctest --test-dir backend/build --output-on-failure
 │       ├── stores/        # Pinia 状态
 │       ├── types/         # 前端类型定义
 │       └── views/         # 业务页面
-└── docs/                  # 设计文档和提交记录
+└── scripts/               # 开发启动、停止和数据维护脚本
 ```
 
 ## 常用页面
@@ -145,5 +157,5 @@ ctest --test-dir backend/build --output-on-failure
 - `backend/data/` 保存运行期数据，只保留目录占位文件进入版本库。
 - `backend/config/app.json` 是本地私有配置，不进入版本库。
 - `backend/build/`、`frontend/node_modules/`、`frontend/dist/`、`vcpkg_installed/` 是生成目录，不进入版本库。
-- `backend/3rdParty/` 下的 Orbbec SDK 头文件与二进制不进入版本库，仅保留说明文档。
-- `docs/记录.md` 用于记录每次提交的主要工作；`docs/面扫系统软件框架设计文档.md` 用于系统设计说明。
+- `backend/3rdParty/orbbec/windows` 与 `backend/3rdParty/orbbec/macos` 已进入版本库，用于开箱即用地链接 Orbbec SDK；后续替换 SDK 时应保持相同目录布局。
+- `Log/` 是本地开发日志目录，不进入版本库。

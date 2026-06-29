@@ -4,10 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 常用命令
 
-后端构建与运行（依赖由 vcpkg 管理，需设置 `VCPKG_ROOT` 指向 vcpkg 安装目录；从仓库根目录执行）：
+后端构建与运行（依赖由 vcpkg 管理，需设置 `VCPKG_ROOT` 指向 vcpkg 安装目录；从仓库根目录执行）。Windows 推荐 MSVC / Visual Studio 2022：
+
+```powershell
+cmake -S backend --preset windows
+cmake --build backend/build --config Release
+.\backend\build\Release\facescan_backend.exe 8080
+```
+
+macOS：
 
 ```bash
-cmake -S backend --preset macos      # Windows 上用 --preset windows（VS 2022 生成器，产物在 backend/build/Release/）
+cmake -S backend --preset macos
 cmake --build backend/build
 ./backend/build/facescan_backend 8080
 ```
@@ -60,7 +68,7 @@ make frontend
 - 通用第三方库（`boost-beast`、`boost-asio`、`sqlite3`、`zlib`、`gtest`）由 **vcpkg 清单模式**管理：`backend/vcpkg.json` 声明依赖并用 `builtin-baseline` 锁定版本；首次配置时自动安装到 `backend/build/vcpkg_installed/`。
 - `backend/CMakePresets.json` 提供 `macos`（Ninja）、`windows`（VS 2022 x64）、`system`（不用 vcpkg）三个预设，前两者通过 `$env{VCPKG_ROOT}` 引用工具链文件。
 - 新机器初始化 vcpkg：`git clone https://github.com/microsoft/vcpkg.git ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh -disableMetrics`（Windows 用 `bootstrap-vcpkg.bat`），再设置环境变量 `VCPKG_ROOT`。
-- **Orbbec SDK 是厂商闭源预编译包，不经 vcpkg 也不进 git**：按平台放在 `backend/3rdParty/orbbec/{macos,windows,linux}/`（目录被 gitignore，布局与获取方式见 `backend/3rdParty/README.md`），CMake 按平台自动探测，可用 `-DFACESCAN_ORBBEC_SDK_DIR` 覆盖。Windows 构建后会把 `bin/` 下的 dll 自动复制到可执行文件目录。
+- **Orbbec SDK 是厂商闭源预编译包，不经 vcpkg 管理**：当前仓库已提交 `backend/3rdParty/orbbec/windows` 与 `backend/3rdParty/orbbec/macos`，Linux 目录预留。CMake 按平台自动探测，可用 `-DFACESCAN_ORBBEC_SDK_DIR` 覆盖。Windows 构建后会把 `bin/` 下的 dll/xml 自动复制到后端和测试可执行文件目录。
 
 ## 运行时配置与生成数据
 
@@ -70,7 +78,7 @@ make frontend
   - `imageRoot`（默认 `backend/data/images`）保存采集图片、点云和预览图，可在设置页调整。
   - `cameraMode` 取值为 `mock`（默认，无需硬件）、`orbbec` 或 `gemini215`。
 - 可选的命令行端口参数会覆盖配置中的端口。
-- 被 git 忽略的运行期产物：`backend/build/`、`frontend/dist/`、`frontend/node_modules/`、`backend/data/db/` 下的 SQLite 文件、`backend/data/images/` 下的采集数据、`backend/config/app.json`、`backend/3rdParty/` 下的 SDK 文件（仅 README.md 入库）、`vcpkg_installed/` 以及 `Log/`。
+- 被 git 忽略的运行期产物：`backend/build/`、`frontend/dist/`、`frontend/node_modules/`、`backend/data/db/` 下的 SQLite 文件、`backend/data/images/` 下的采集数据、`backend/config/app.json`、`vcpkg_installed/` 以及 `Log/`。`backend/3rdParty/orbbec/windows` 与 `backend/3rdParty/orbbec/macos` 是例外，已随仓库提交。
 
 ## 架构概览
 
