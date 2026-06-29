@@ -6,10 +6,10 @@ VCPKG_TOOLCHAIN := $(if $(VCPKG_ROOT),-DCMAKE_TOOLCHAIN_FILE=$(VCPKG_ROOT)/scrip
 .PHONY: dev stop backend frontend
 
 dev:
-	./scripts/dev.sh
+	./scripts/macos/dev.sh
 
 stop:
-	./scripts/stop-dev.sh
+	./scripts/macos/stop-dev.sh
 
 backend:
 	cmake -S backend -B backend/build -G Ninja $(VCPKG_TOOLCHAIN)

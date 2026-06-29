@@ -1,5 +1,6 @@
 build/
 compile_commands.json
+.deps/
 backend/build/
 backend/config/app.json
 backend/3rdParty/*

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOG_DIR="$ROOT_DIR/Log"
 BACKEND_BUILD_DIR="$ROOT_DIR/backend/build"
 BACKEND_BIN="$BACKEND_BUILD_DIR/facescan_backend"
@@ -120,4 +120,4 @@ echo
 echo "FaceScan dev environment is up."
 echo "Backend log : $BACKEND_LOG_FILE"
 echo "Frontend log: $FRONTEND_LOG_FILE"
-echo "Stop both with: $ROOT_DIR/scripts/stop-dev.sh"
+echo "Stop both with: $ROOT_DIR/scripts/macos/stop-dev.sh"

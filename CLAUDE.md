@@ -54,12 +54,12 @@ cd frontend && npm run preview
 
 ```bash
 make dev     # 构建并启动后端与前端，pid 和日志写入 Log/
-make stop    # 通过 scripts/stop-dev.sh 同时停止两端
+make stop    # 通过 scripts/macos/stop-dev.sh 同时停止两端
 make backend # 仅构建并运行后端
 make frontend
 ```
 
-注意：`scripts/dev.sh` 会**通过 `sudo` 以 root 身份**启动后端，因为真实 Orbbec 相机需要 USB 访问权限；日志与 pid 文件落在 `Log/`。`scripts/deduplicate-orders.sh` 是针对 SQLite 库的一次性 SQL 维护脚本。
+注意：`scripts/macos/dev.sh` 会**通过 `sudo` 以 root 身份**启动后端，因为真实 Orbbec 相机需要 USB 访问权限；日志与 pid 文件落在 `Log/`。`scripts/macos/deduplicate-orders.sh` 是针对 SQLite 库的一次性 SQL 维护脚本。Windows 一键脚本位于 `scripts/windows/`。
 
 后端拆分为 `facescan_core` 静态库与 `facescan_backend` 可执行文件，因此测试链接的是 `facescan_core` 而非进程入口。
 

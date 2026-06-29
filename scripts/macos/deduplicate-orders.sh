@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DB_PATH="${1:-$ROOT_DIR/backend/data/db/facescan.sqlite3}"
 
 if [[ ! -f "$DB_PATH" ]]; then
