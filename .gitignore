@@ -24,4 +24,5 @@ Log/*
 .DS_Store
 .claude/*
 docs/*
+!docs/项目接手指南.md
 design-mockups/*
