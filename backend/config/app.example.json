@@ -2,6 +2,12 @@
   "backendPort": 8080,
   "database": "data/db/facescan.sqlite3",
   "imageRoot": "data/images",
-  "cameraMode": "mock"
+  "cameraMode": "mock",
+  "multiCameraTriggerWorkflow": "orbbec_parallel_then_module4",
+  "orbbecLeftSerial": "",
+  "orbbecRightSerial": "",
+  "orbbecBottomSerial": "",
+  "hikvisionFrontSerial": "",
+  "mindvisionStereoSerial": "",
+  "cameraTriggerTimeoutMs": 1000
 }
-

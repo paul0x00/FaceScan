@@ -62,6 +62,7 @@ const cameraModeText = computed(() => {
   const mode = settings.value.cameraMode || 'mock'
   if (mode === 'mock') return '模拟相机'
   if (mode === 'orbbec' || mode === 'gemini215') return 'Orbbec Gemini 215'
+  if (mode === 'multi_camera') return '多相机采集模组'
   return mode
 })
 

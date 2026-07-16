@@ -41,10 +41,10 @@ const controlList = computed(() => cameraControls.value ? [
 ] : [])
 /** 四路相机预览配置。 */
 const cameras = [
-  { view: 'left', label: '左侧相机图像' },
-  { view: 'front', label: '正面相机图像' },
-  { view: 'right', label: '右侧相机图像' },
-  { view: 'bottom', label: '下方相机图像' }
+  { view: 'left', label: '左侧奥比中光彩色图' },
+  { view: 'front', label: '正面海康威视彩色图' },
+  { view: 'right', label: '右侧奥比中光彩色图' },
+  { view: 'bottom', label: '下方奥比中光彩色图' }
 ]
 /** 下一步需要完整四路采图后才允许进入。 */
 const canGoNext = computed(() => capturedImageCount.value >= cameras.length)

@@ -22,7 +22,7 @@ find_package(SQLite3 REQUIRED)
 find_package(ZLIB REQUIRED)
 
 # Orbbec SDK 为厂商闭源预编译包，不进 vcpkg 也不进 git；按平台放在
-# 3rdParty/orbbec/<platform>/ 下（见 3rdParty/README.md），缺失时自动降级为 mock 模式。
+# 3rdParty/orbbec/<platform>/ 下（见 3rdParty/README.md）；缺失时 mock 仍可用，硬件模式会明确报错。
 if(NOT FACESCAN_ORBBEC_SDK_DIR)
     if(APPLE)
         set(FACESCAN_ORBBEC_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/orbbec/macos")
@@ -54,6 +54,9 @@ add_library(facescan_core STATIC
     src/algorithm/color_point_cloud_sdk.cpp
     src/api/app.cpp
     src/camera/camera_manager.cpp
+    src/camera/multi_camera_device.cpp
+    src/camera/vendor_camera.cpp
+    src/common/bmp_utils.cpp
     src/common/file_utils.cpp
     src/common/json_utils.cpp
     src/common/time_utils.cpp
@@ -78,6 +81,7 @@ if(WIN32)
 endif()
 
 if(ORBBEC_SDK_LIB)
+    target_sources(facescan_core PRIVATE src/camera/orbbec_multi_camera.cpp)
     target_compile_definitions(facescan_core PUBLIC FACESCAN_WITH_ORBBEC)
     target_include_directories(facescan_core PRIVATE "${ORBBEC_SDK_INCLUDE_DIR}")
     target_link_libraries(facescan_core PUBLIC "${ORBBEC_SDK_LIB}")
@@ -85,6 +89,40 @@ if(ORBBEC_SDK_LIB)
         set_target_properties(facescan_core PROPERTIES
             BUILD_RPATH "${FACESCAN_ORBBEC_SDK_DIR}/lib"
         )
+    endif()
+endif()
+
+if(WIN32)
+    if(NOT FACESCAN_HIKVISION_SDK_DIR)
+        set(FACESCAN_HIKVISION_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/hikvision/windows")
+    endif()
+    set(HIKVISION_INCLUDE "${FACESCAN_HIKVISION_SDK_DIR}/include")
+    set(HIKVISION_LIBRARY "${FACESCAN_HIKVISION_SDK_DIR}/lib/MvCameraControl.lib")
+    if(EXISTS "${HIKVISION_INCLUDE}/MvCameraControl.h" AND EXISTS "${HIKVISION_LIBRARY}")
+        message(STATUS "Hikvision SDK found: ${HIKVISION_LIBRARY}")
+        target_sources(facescan_core PRIVATE src/camera/hikvision_camera.cpp)
+        target_compile_definitions(facescan_core PUBLIC FACESCAN_WITH_HIKVISION)
+        target_include_directories(facescan_core PRIVATE "${HIKVISION_INCLUDE}")
+        target_link_libraries(facescan_core PUBLIC "${HIKVISION_LIBRARY}")
+        set(HIKVISION_RUNTIME "${FACESCAN_HIKVISION_SDK_DIR}/bin/MvCameraControl.dll")
+    else()
+        message(STATUS "Hikvision SDK not found under ${FACESCAN_HIKVISION_SDK_DIR}; multi_camera mode will be unavailable")
+    endif()
+
+    if(NOT FACESCAN_MINDVISION_SDK_DIR)
+        set(FACESCAN_MINDVISION_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/mindvision/windows")
+    endif()
+    set(MINDVISION_INCLUDE "${FACESCAN_MINDVISION_SDK_DIR}/include")
+    set(MINDVISION_LIBRARY "${FACESCAN_MINDVISION_SDK_DIR}/lib/MVCAMSDK_X64.lib")
+    if(EXISTS "${MINDVISION_INCLUDE}/CameraApi.h" AND EXISTS "${MINDVISION_LIBRARY}")
+        message(STATUS "MindVision SDK found: ${MINDVISION_LIBRARY}")
+        target_sources(facescan_core PRIVATE src/camera/mindvision_camera.cpp)
+        target_compile_definitions(facescan_core PUBLIC FACESCAN_WITH_MINDVISION)
+        target_include_directories(facescan_core PRIVATE "${MINDVISION_INCLUDE}")
+        target_link_libraries(facescan_core PUBLIC "${MINDVISION_LIBRARY}")
+        set(MINDVISION_RUNTIME "${FACESCAN_MINDVISION_SDK_DIR}/bin/MVCAMSDK_X64.dll")
+    else()
+        message(STATUS "MindVision SDK not found under ${FACESCAN_MINDVISION_SDK_DIR}; multi_camera mode will be unavailable")
     endif()
 endif()
 
@@ -108,6 +146,21 @@ if(ORBBEC_SDK_LIB AND WIN32)
         "${FACESCAN_ORBBEC_SDK_DIR}/bin/*.xml")
 endif()
 
+if(WIN32)
+    set(FACESCAN_VENDOR_RUNTIME)
+    if(EXISTS "${HIKVISION_RUNTIME}")
+        list(APPEND FACESCAN_VENDOR_RUNTIME "${HIKVISION_RUNTIME}")
+    endif()
+    if(EXISTS "${MINDVISION_RUNTIME}")
+        list(APPEND FACESCAN_VENDOR_RUNTIME "${MINDVISION_RUNTIME}")
+    endif()
+    if(FACESCAN_VENDOR_RUNTIME)
+        add_custom_command(TARGET facescan_backend POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${FACESCAN_VENDOR_RUNTIME} $<TARGET_FILE_DIR:facescan_backend>)
+    endif()
+endif()
+
 if(BUILD_TESTING)
     # 优先使用 vcpkg/系统提供的 GoogleTest；找不到时回退到 FetchContent 在线下载
     find_package(GTest CONFIG QUIET)
@@ -126,6 +179,7 @@ if(BUILD_TESTING)
 
     add_executable(facescan_tests
         tests/app_test.cpp
+        tests/bmp_utils_test.cpp
         tests/camera_manager_test.cpp
         tests/color_point_cloud_sdk_test.cpp
         tests/database_test.cpp

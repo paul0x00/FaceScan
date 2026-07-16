@@ -41,6 +41,8 @@ AppConfig::AppConfig()
       databasePath("backend/data/db/facescan.sqlite3"),
       imageRoot("backend/data/images"),
       cameraMode("mock"),
+      multiCameraTriggerWorkflow("orbbec_parallel_then_module4"),
+      cameraTriggerTimeoutMs(1000),
       configPath("backend/config/app.json")
 {
 }
@@ -78,6 +80,13 @@ AppConfig loadAppConfig()
     const int port = jsonIntValue(body, "backendPort");
     const std::string imageRoot = jsonStringValue(body, "imageRoot");
     const std::string cameraMode = jsonStringValue(body, "cameraMode");
+    const std::string triggerWorkflow = jsonStringValue(body, "multiCameraTriggerWorkflow");
+    const std::string orbbecLeftSerial = jsonStringValue(body, "orbbecLeftSerial");
+    const std::string orbbecRightSerial = jsonStringValue(body, "orbbecRightSerial");
+    const std::string orbbecBottomSerial = jsonStringValue(body, "orbbecBottomSerial");
+    const std::string hikvisionFrontSerial = jsonStringValue(body, "hikvisionFrontSerial");
+    const std::string mindvisionStereoSerial = jsonStringValue(body, "mindvisionStereoSerial");
+    const int triggerTimeoutMs = jsonIntValue(body, "cameraTriggerTimeoutMs");
     if (port > 0 && port <= 65535) {
         config.backendPort = static_cast<unsigned short>(port);
     }
@@ -87,6 +96,13 @@ AppConfig loadAppConfig()
     if (!cameraMode.empty()) {
         config.cameraMode = cameraMode;
     }
+    if (!triggerWorkflow.empty()) config.multiCameraTriggerWorkflow = triggerWorkflow;
+    config.orbbecLeftSerial = orbbecLeftSerial;
+    config.orbbecRightSerial = orbbecRightSerial;
+    config.orbbecBottomSerial = orbbecBottomSerial;
+    config.hikvisionFrontSerial = hikvisionFrontSerial;
+    config.mindvisionStereoSerial = mindvisionStereoSerial;
+    if (triggerTimeoutMs > 0) config.cameraTriggerTimeoutMs = triggerTimeoutMs;
 
     const std::string backendRoot = backendRootFromConfigPath(configPath);
     config.databasePath = fixedDatabasePath(backendRoot);
@@ -105,7 +121,14 @@ bool saveAppConfig(const AppConfig& config)
          << "  \"backendPort\": " << config.backendPort << ",\n"
          << "  \"database\": \"data/db/facescan.sqlite3\",\n"
          << "  \"imageRoot\": \"" << escapeJson(configValueForFile(config.configPath, config.imageRoot)) << "\",\n"
-         << "  \"cameraMode\": \"" << escapeJson(config.cameraMode) << "\"\n"
+         << "  \"cameraMode\": \"" << escapeJson(config.cameraMode) << "\",\n"
+         << "  \"multiCameraTriggerWorkflow\": \"" << escapeJson(config.multiCameraTriggerWorkflow) << "\",\n"
+         << "  \"orbbecLeftSerial\": \"" << escapeJson(config.orbbecLeftSerial) << "\",\n"
+         << "  \"orbbecRightSerial\": \"" << escapeJson(config.orbbecRightSerial) << "\",\n"
+         << "  \"orbbecBottomSerial\": \"" << escapeJson(config.orbbecBottomSerial) << "\",\n"
+         << "  \"hikvisionFrontSerial\": \"" << escapeJson(config.hikvisionFrontSerial) << "\",\n"
+         << "  \"mindvisionStereoSerial\": \"" << escapeJson(config.mindvisionStereoSerial) << "\",\n"
+         << "  \"cameraTriggerTimeoutMs\": " << config.cameraTriggerTimeoutMs << "\n"
          << "}\n";
     return true;
 }

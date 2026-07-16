@@ -1,4 +1,5 @@
 #include "camera_manager.hpp"
+#include "multi_camera_device.hpp"
 
 #include "../common/file_utils.hpp"
 #include "../common/json_utils.hpp"
@@ -831,8 +832,14 @@ private:
 #endif
 
 /// 根据配置创建相机设备实例。
-std::unique_ptr<ICameraDevice> createCameraDevice(const std::string& imageRoot, const std::string& cameraMode)
+std::unique_ptr<ICameraDevice> createCameraDevice(
+    const std::string& imageRoot,
+    const std::string& cameraMode,
+    const MultiCameraConfig& multiCameraConfig)
 {
+    if (cameraMode == "multi_camera") {
+        return createMultiCameraDevice(imageRoot, multiCameraConfig);
+    }
 #if defined(FACESCAN_WITH_ORBBEC)
     if (cameraMode == "orbbec" || cameraMode == "gemini215") {
         return std::unique_ptr<ICameraDevice>(new OrbbecCameraDevice(imageRoot));
@@ -854,13 +861,22 @@ ICameraDevice::~ICameraDevice()
 
 /// 默认使用模拟相机模式。
 CameraManager::CameraManager(const std::string& imageRoot)
-    : device_(createCameraDevice(imageRoot, "mock"))
+    : device_(createCameraDevice(imageRoot, "mock", MultiCameraConfig()))
 {
 }
 
 /// 按配置模式创建相机设备。
 CameraManager::CameraManager(const std::string& imageRoot, const std::string& cameraMode)
-    : device_(createCameraDevice(imageRoot, cameraMode))
+    : device_(createCameraDevice(imageRoot, cameraMode, MultiCameraConfig()))
+{
+}
+
+/// 按配置模式创建相机设备，并传入多厂商设备角色配置。
+CameraManager::CameraManager(
+    const std::string& imageRoot,
+    const std::string& cameraMode,
+    const MultiCameraConfig& multiCameraConfig)
+    : device_(createCameraDevice(imageRoot, cameraMode, multiCameraConfig))
 {
 }
 

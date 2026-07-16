@@ -1,5 +1,6 @@
 #include "../src/algorithm/color_point_cloud_sdk.hpp"
 
+#include "../src/common/bmp_utils.hpp"
 #include "../src/common/file_utils.hpp"
 #include "test_utils.hpp"
 
@@ -74,4 +75,58 @@ TEST(ColorPointCloudSdkTest, ReconstructsGeometryFromStereoIrAndUsesColorTexture
     EXPECT_NE(std::string::npos, result.sourceImages[2].find("_color.ppm"));
     EXPECT_TRUE(pathExists(result.plyPath));
     EXPECT_NE(std::string::npos, readFileText(result.plyPath).find("property uchar red"));
+}
+
+
+TEST(ColorPointCloudSdkTest, FindsStereoBmpFilesInCameraDirectories)
+{
+    facescan_test::ScopedTempDir temp("stereo_bmp_reconstruct");
+    const std::string orderRoot = temp.path() + "/ORDER002";
+    const std::string frontDirectory = orderRoot + "/front";
+    const std::string displayDirectory = orderRoot + "/left";
+    ensureDirectory(frontDirectory);
+    ensureDirectory(displayDirectory);
+
+    const int width = 160;
+    const int height = 120;
+    std::vector<unsigned char> color(static_cast<std::size_t>(width * height * 3));
+    std::vector<unsigned char> left(static_cast<std::size_t>(width * height));
+    std::vector<unsigned char> right(static_cast<std::size_t>(width * height));
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const std::size_t pixel = static_cast<std::size_t>(y * width + x);
+            color[pixel * 3u] = static_cast<unsigned char>(x * 255 / width);
+            color[pixel * 3u + 1u] = static_cast<unsigned char>(y * 255 / height);
+            color[pixel * 3u + 2u] = 180;
+            left[pixel] = speckleValue(x, y);
+            const int sourceX = x + 8;
+            right[pixel] = sourceX < width ? speckleValue(sourceX, y) : 0;
+        }
+    }
+
+    const std::string colorPath = frontDirectory + "/ORDER002_color.bmp";
+    const std::string leftPath = frontDirectory + "/ORDER002_left.bmp";
+    const std::string rightPath = frontDirectory + "/ORDER002_right.bmp";
+    const std::string displayPath = displayDirectory + "/ORDER002_color.bmp";
+    ASSERT_TRUE(writeBmpRgb(colorPath, width, height, color));
+    ASSERT_TRUE(writeBmpGray(leftPath, width, height, left));
+    ASSERT_TRUE(writeBmpGray(rightPath, width, height, right));
+    ASSERT_TRUE(writeBmpRgb(displayPath, width, height, color));
+
+    PointCloudOptions options;
+    options.columns = 48;
+    options.rows = 36;
+    options.namePrefix = "ORDER002";
+    options.outputFileName = "ORDER002.ply";
+
+    ColorPointCloudSdk sdk(temp.path());
+    const PointCloudBuildResult result = sdk.reconstruct(std::vector<std::string>(1, displayPath), options);
+
+    EXPECT_TRUE(result.ok) << result.message;
+    EXPECT_GT(result.pointCount, 100);
+    ASSERT_EQ(3u, result.sourceImages.size());
+    EXPECT_EQ(leftPath, result.sourceImages[0]);
+    EXPECT_EQ(rightPath, result.sourceImages[1]);
+    EXPECT_EQ(colorPath, result.sourceImages[2]);
+    EXPECT_TRUE(pathExists(result.plyPath));
 }

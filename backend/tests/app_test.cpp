@@ -1,5 +1,8 @@
 #include "../src/api/app.hpp"
 
+#include "../src/common/bmp_utils.hpp"
+#include "../src/common/file_utils.hpp"
+#include "../src/common/json_utils.hpp"
 #include "test_utils.hpp"
 
 #include <boost/beast/http.hpp>
@@ -75,4 +78,95 @@ TEST(AppTest, CameraControlsEndpointReadsAndUpdatesControls)
     EXPECT_NE(std::string::npos, putRes.body().find("\"value\":33"));
     EXPECT_NE(std::string::npos, putRes.body().find("\"value\":9"));
     EXPECT_NE(std::string::npos, putRes.body().find("\"value\":44"));
+}
+
+/// 验证多相机配置具有约定默认值，并能完整保存到配置文件。
+TEST(AppTest, SavesMultiCameraConfiguration)
+{
+    facescan_test::ScopedTempDir temp("app_multi_camera_config");
+    AppConfig config;
+    EXPECT_EQ("orbbec_parallel_then_module4", config.multiCameraTriggerWorkflow);
+    EXPECT_EQ(1000, config.cameraTriggerTimeoutMs);
+
+    config.configPath = temp.path() + "/config/app.json";
+    config.cameraMode = "multi_camera";
+    config.orbbecLeftSerial = "ORB-L";
+    config.orbbecRightSerial = "ORB-R";
+    config.orbbecBottomSerial = "ORB-B";
+    config.hikvisionFrontSerial = "HIK-F";
+    config.mindvisionStereoSerial = "MV-S";
+    config.cameraTriggerTimeoutMs = 1500;
+
+    ASSERT_TRUE(saveAppConfig(config));
+    const std::string body = readFileText(config.configPath);
+    EXPECT_NE(std::string::npos, body.find("\"cameraMode\": \"multi_camera\""));
+    EXPECT_NE(std::string::npos, body.find("\"orbbecLeftSerial\": \"ORB-L\""));
+    EXPECT_NE(std::string::npos, body.find("\"hikvisionFrontSerial\": \"HIK-F\""));
+    EXPECT_NE(std::string::npos, body.find("\"mindvisionStereoSerial\": \"MV-S\""));
+    EXPECT_NE(std::string::npos, body.find("\"cameraTriggerTimeoutMs\": 1500"));
+}
+
+
+/// 验证数据根反扫支持相机子目录 BMP，并保持拍摄页四视图顺序。
+TEST(AppTest, RestoresCameraDirectoryBmpsAndServesBmpContentType)
+{
+    facescan_test::ScopedTempDir temp("app_camera_directory_bmp");
+    AppConfig config;
+    config.databasePath = temp.path() + "/db/facescan.sqlite3";
+    config.imageRoot = temp.path() + "/images";
+    config.configPath = temp.path() + "/config/app.json";
+
+    const std::string orderRoot = config.imageRoot + "/P202607150001-Test/O20260715010101";
+    const std::vector<unsigned char> rgb = { 10, 20, 30, 40, 50, 60 };
+    const std::string orbbecLeft = orderRoot + "/left/O20260715010101_color.bmp";
+    const std::string hikFront = orderRoot + "/front/O20260715010101_color.bmp";
+    const std::string orbbecRight = orderRoot + "/right/O20260715010101_color.bmp";
+    const std::string orbbecBottom = orderRoot + "/bottom/O20260715010101_color.bmp";
+    const std::string mindvisionLeft = orderRoot + "/front/O20260715010101_left.bmp";
+    ASSERT_TRUE(writeBmpRgb(mindvisionLeft, 2, 1, rgb));
+    ASSERT_TRUE(writeBmpRgb(orbbecBottom, 2, 1, rgb));
+    ASSERT_TRUE(writeBmpRgb(orbbecRight, 2, 1, rgb));
+    ASSERT_TRUE(writeBmpRgb(hikFront, 2, 1, rgb));
+    ASSERT_TRUE(writeBmpRgb(orbbecLeft, 2, 1, rgb));
+
+    App app(config);
+    http::request<http::string_body> patientsReq(http::verb::get, "/api/patients", 11);
+    const http::response<http::string_body> patientsRes = app.handle(patientsReq);
+    ASSERT_EQ(http::status::ok, patientsRes.result());
+    const int patientId = jsonIntValue(patientsRes.body(), "id");
+    ASSERT_GT(patientId, 0) << patientsRes.body();
+
+    http::request<http::string_body> scansReq(
+        http::verb::get,
+        "/api/patients/" + std::to_string(patientId) + "/scans",
+        11);
+    const http::response<http::string_body> scansRes = app.handle(scansReq);
+    ASSERT_EQ(http::status::ok, scansRes.result());
+    const std::string body = scansRes.body();
+    const std::size_t leftPosition = body.find(orbbecLeft);
+    const std::size_t frontPosition = body.find(hikFront, leftPosition == std::string::npos ? 0 : leftPosition);
+    const std::size_t rightPosition = body.find(orbbecRight);
+    const std::size_t bottomPosition = body.find(orbbecBottom);
+    const std::size_t stereoPosition = body.find(mindvisionLeft);
+    ASSERT_NE(std::string::npos, leftPosition) << body;
+    ASSERT_NE(std::string::npos, frontPosition) << body;
+    ASSERT_NE(std::string::npos, rightPosition) << body;
+    ASSERT_NE(std::string::npos, bottomPosition) << body;
+    ASSERT_NE(std::string::npos, stereoPosition) << body;
+    EXPECT_LT(leftPosition, frontPosition);
+    EXPECT_LT(frontPosition, rightPosition);
+    EXPECT_LT(rightPosition, bottomPosition);
+    EXPECT_LT(bottomPosition, stereoPosition);
+    EXPECT_NE(std::string::npos, body.find("\"previewPath\":\"" + hikFront));
+
+    http::request<http::string_body> imageReq(
+        http::verb::get,
+        "/api/files/image?path=" + hikFront,
+        11);
+    const http::response<http::string_body> imageRes = app.handle(imageReq);
+    EXPECT_EQ(http::status::ok, imageRes.result());
+    EXPECT_EQ("image/bmp", imageRes[http::field::content_type]);
+    ASSERT_GE(imageRes.body().size(), 2u);
+    EXPECT_EQ('B', imageRes.body()[0]);
+    EXPECT_EQ('M', imageRes.body()[1]);
 }

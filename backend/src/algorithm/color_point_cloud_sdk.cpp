@@ -1,5 +1,6 @@
 #include "color_point_cloud_sdk.hpp"
 
+#include "../common/bmp_utils.hpp"
 #include "../common/file_utils.hpp"
 #include "../common/time_utils.hpp"
 
@@ -300,7 +301,27 @@ bool loadPpm(const std::string& path, ImageSource* source)
     return true;
 }
 
-/// 构造图像采样源，支持 PPM 像素或 SVG 渐变兜底。
+/// 加载 BMP 图像并填充可采样像素。
+bool loadBmpImageSource(const std::string& path, ImageSource* source)
+{
+    if (!source) {
+        return false;
+    }
+    BmpImageData image;
+    if (!loadBmp(path, &image) || !image.valid()) {
+        return false;
+    }
+    source->width = image.width;
+    source->height = image.height;
+    source->pixels.clear();
+    source->pixels.reserve(static_cast<std::size_t>(image.width * image.height));
+    for (std::size_t offset = 0; offset + 2u < image.rgb.size(); offset += 3u) {
+        source->pixels.push_back(Rgb(image.rgb[offset], image.rgb[offset + 1u], image.rgb[offset + 2u]));
+    }
+    return source->pixels.size() == static_cast<std::size_t>(image.width * image.height);
+}
+
+/// 构造图像采样源，优先读取 BMP，并保留 PPM/SVG 历史数据兼容。
 ImageSource loadImageSource(const std::string& path)
 {
     ImageSource source;
@@ -308,7 +329,7 @@ ImageSource loadImageSource(const std::string& path)
     source.view = viewFromPath(path);
     source.colorA = fallbackColor(path, 0);
     source.colorB = fallbackColor(path, 1);
-    if (!loadPpm(path, &source)) {
+    if (!loadBmpImageSource(path, &source) && !loadPpm(path, &source)) {
         loadSvgColors(path, &source);
     }
     return source;
@@ -335,24 +356,62 @@ bool endsWith(const std::string& value, const std::string& suffix)
         && value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
-/// 从四张临时纹理路径推导同一订单目录中的同步采集三件套。
+/// 去掉订单图片的视角/用途后缀，得到同一订单的文件名前缀。
+std::string captureStem(const std::string& path)
+{
+    const char* suffixes[] = { "_left", "_front", "_right", "_bottom", "_color", "_left_ir", "_right_ir" };
+    std::string stem = removeExtension(fileNameOnly(path));
+    for (std::size_t suffixIndex = 0; suffixIndex < sizeof(suffixes) / sizeof(suffixes[0]); ++suffixIndex) {
+        const std::string suffix = suffixes[suffixIndex];
+        if (endsWith(stem, suffix)) {
+            return stem.substr(0, stem.size() - suffix.size());
+        }
+    }
+    return stem;
+}
+
+/// 尝试从指定订单根目录构造新多相机 BMP 三件套。
+StereoCaptureInput findBmpStereoCaptureInput(const std::string& orderRoot, const std::string& stem)
+{
+    StereoCaptureInput input;
+    if (orderRoot.empty() || stem.empty()) {
+        return input;
+    }
+    input.colorPath = orderRoot + "/front/" + stem + "_color.bmp";
+    input.leftIrPath = orderRoot + "/front/" + stem + "_left.bmp";
+    input.rightIrPath = orderRoot + "/front/" + stem + "_right.bmp";
+    input.ok = pathExists(input.colorPath) && pathExists(input.leftIrPath) && pathExists(input.rightIrPath);
+    if (input.ok) {
+        return input;
+    }
+
+    input.colorPath = orderRoot + "/hik_color/" + stem + "_front.bmp";
+    input.leftIrPath = orderRoot + "/mindvision_left/" + stem + "_left.bmp";
+    input.rightIrPath = orderRoot + "/mindvision_right/" + stem + "_right.bmp";
+    input.ok = pathExists(input.colorPath) && pathExists(input.leftIrPath) && pathExists(input.rightIrPath);
+    return input;
+}
+
+/// 从展示图路径推导新 BMP 目录或历史 PPM/PGM 同步采集三件套。
 StereoCaptureInput findStereoCaptureInput(const std::vector<std::string>& imagePaths)
 {
-    const char* suffixes[] = { "_left", "_front", "_right", "_bottom", "_color" };
     for (std::size_t i = 0; i < imagePaths.size(); ++i) {
         const std::string folder = parentDirectory(imagePaths[i]);
-        std::string stem = removeExtension(fileNameOnly(imagePaths[i]));
-        for (std::size_t suffixIndex = 0; suffixIndex < sizeof(suffixes) / sizeof(suffixes[0]); ++suffixIndex) {
-            const std::string suffix = suffixes[suffixIndex];
-            if (endsWith(stem, suffix)) {
-                stem = stem.substr(0, stem.size() - suffix.size());
-                break;
-            }
-        }
+        const std::string stem = captureStem(imagePaths[i]);
         if (folder.empty() || stem.empty()) {
             continue;
         }
-        StereoCaptureInput input;
+
+        const std::string parent = parentDirectory(folder);
+        StereoCaptureInput input = findBmpStereoCaptureInput(parent, stem);
+        if (input.ok) {
+            return input;
+        }
+        input = findBmpStereoCaptureInput(folder, stem);
+        if (input.ok) {
+            return input;
+        }
+
         input.colorPath = folder + "/" + stem + "_color.ppm";
         input.leftIrPath = folder + "/" + stem + "_left_ir.pgm";
         input.rightIrPath = folder + "/" + stem + "_right_ir.pgm";
@@ -424,6 +483,35 @@ bool loadPgm(const std::string& path, GrayImage* image)
         image->pixels.push_back(clampDouble(static_cast<double>(value) / maxValue, 0.0, 1.0));
     }
     return image->valid();
+}
+
+/// 加载 BMP 并按亮度转换为双目匹配使用的灰度图。
+bool loadBmpGray(const std::string& path, GrayImage* image)
+{
+    if (!image) {
+        return false;
+    }
+    BmpImageData source;
+    if (!loadBmp(path, &source) || !source.valid()) {
+        return false;
+    }
+    image->path = path;
+    image->width = source.width;
+    image->height = source.height;
+    image->maxValue = 255;
+    image->pixels.clear();
+    image->pixels.reserve(static_cast<std::size_t>(source.width * source.height));
+    for (std::size_t offset = 0; offset + 2u < source.rgb.size(); offset += 3u) {
+        const int gray = (77 * source.rgb[offset] + 150 * source.rgb[offset + 1u] + 29 * source.rgb[offset + 2u]) >> 8;
+        image->pixels.push_back(static_cast<double>(gray) / 255.0);
+    }
+    return image->valid();
+}
+
+/// 优先读取 BMP 灰度图，并保留 PGM 历史采集兼容。
+bool loadGrayImage(const std::string& path, GrayImage* image)
+{
+    return loadBmpGray(path, image) || loadPgm(path, image);
 }
 
 /// 椭圆面部轮廓掩膜，用于过滤正面/侧面采样点。
@@ -585,8 +673,8 @@ PointCloudBuildResult reconstructFromStereoIr(
 
     GrayImage left;
     GrayImage right;
-    if (!loadPgm(input.leftIrPath, &left) || !loadPgm(input.rightIrPath, &right)) {
-        result.message = "Cannot read stereo IR PGM images";
+    if (!loadGrayImage(input.leftIrPath, &left) || !loadGrayImage(input.rightIrPath, &right)) {
+        result.message = "Cannot read stereo grayscale images";
         return result;
     }
     if (left.width != right.width || left.height != right.height) {

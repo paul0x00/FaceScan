@@ -1,9 +1,12 @@
 #include "../src/camera/camera_manager.hpp"
+#include "../src/camera/vendor_camera.hpp"
 
 #include "../src/common/file_utils.hpp"
 #include "test_utils.hpp"
 
 #include <gtest/gtest.h>
+
+#include <thread>
 
 using namespace facescan;
 
@@ -77,4 +80,56 @@ TEST(CameraManagerTest, UpdatesMockCameraControls)
     EXPECT_EQ(100, changed.exposure.value);
     EXPECT_EQ(21, changed.gain.value);
     EXPECT_EQ(0, changed.brightness.value);
+}
+
+/// 验证多设备触发屏障会等待所有设备准备后统一释放。
+TEST(CameraManagerTest, TriggerBarrierCoordinatesReadyWorkers)
+{
+    TriggerBarrier barrier;
+    barrier.setExpected(2);
+    bool firstReleased = false;
+    bool secondReleased = false;
+    std::thread first([&]() {
+        barrier.arrive();
+        firstReleased = barrier.wait(500);
+    });
+    std::thread second([&]() {
+        barrier.arrive();
+        secondReleased = barrier.wait(500);
+    });
+
+    EXPECT_TRUE(barrier.waitAllReady(500));
+    barrier.release();
+    first.join();
+    second.join();
+    EXPECT_TRUE(firstReleased);
+    EXPECT_TRUE(secondReleased);
+}
+
+/// 验证取消屏障会立即唤醒设备线程并返回失败。
+TEST(CameraManagerTest, TriggerBarrierCancellationWakesWorkers)
+{
+    TriggerBarrier barrier;
+    barrier.setExpected(1);
+    bool released = true;
+    std::thread worker([&]() {
+        barrier.arrive();
+        released = barrier.wait(500);
+    });
+    EXPECT_TRUE(barrier.waitAllReady(500));
+    barrier.cancelAndRelease();
+    worker.join();
+    EXPECT_FALSE(released);
+}
+
+/// 验证本轮屏障一旦取消，后续普通释放不能覆盖取消状态。
+TEST(CameraManagerTest, TriggerBarrierReleaseDoesNotOverrideCancellation)
+{
+    TriggerBarrier barrier;
+    barrier.setExpected(1);
+    barrier.arrive();
+    ASSERT_TRUE(barrier.waitAllReady(500));
+    barrier.cancelAndRelease();
+    barrier.release();
+    EXPECT_FALSE(barrier.wait(10));
 }

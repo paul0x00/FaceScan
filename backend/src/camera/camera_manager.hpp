@@ -126,7 +126,7 @@ struct CameraControlUpdate {
     }
 };
 
-/// 相机设备抽象接口，屏蔽模拟设备和真实 Orbbec 设备差异。
+/// 相机设备抽象接口，屏蔽模拟设备、单台 Orbbec 和多厂商组合设备差异。
 class ICameraDevice {
 public:
     /// 释放设备资源。
@@ -150,6 +150,30 @@ public:
     virtual std::vector<std::string> capture(const std::string& orderFolder, const std::string& orderName) = 0;
 };
 
+
+/// 多厂商相机模式的设备角色与触发配置。
+struct MultiCameraConfig {
+    /// 触发工作流：sequential_modules 或 orbbec_parallel_then_module4。
+    std::string triggerWorkflow;
+    /// 左侧 Orbbec 序列号，空值时按枚举顺序兜底。
+    std::string orbbecLeftSerial;
+    /// 右侧 Orbbec 序列号，空值时按枚举顺序兜底。
+    std::string orbbecRightSerial;
+    /// 下方 Orbbec 序列号，空值时按枚举顺序兜底。
+    std::string orbbecBottomSerial;
+    /// 正面海康彩色相机序列号，空值时使用第一台枚举设备。
+    std::string hikvisionFrontSerial;
+    /// 迈德威视双目相机序列号，空值时使用第一台枚举设备。
+    std::string mindvisionStereoSerial;
+    /// 单步触发等待超时，单位毫秒。
+    int triggerTimeoutMs;
+
+    MultiCameraConfig()
+        : triggerWorkflow("orbbec_parallel_then_module4"), triggerTimeoutMs(1000)
+    {
+    }
+};
+
 /// 相机服务门面，向 API 层提供稳定的预览和采集能力。
 class CameraManager {
 public:
@@ -157,6 +181,8 @@ public:
     explicit CameraManager(const std::string& imageRoot);
     /// 按配置选择模拟相机或真实设备。
     CameraManager(const std::string& imageRoot, const std::string& cameraMode);
+    /// 按配置选择相机模式，并传入多厂商设备角色配置。
+    CameraManager(const std::string& imageRoot, const std::string& cameraMode, const MultiCameraConfig& multiCameraConfig);
     /// 注入自定义设备实现，主要用于测试。
     explicit CameraManager(std::unique_ptr<ICameraDevice> device);
 

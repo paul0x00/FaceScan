@@ -527,7 +527,42 @@ bool parsePatientFolder(const DirectoryEntry& entry, DataRootPatient* patient)
 /// 判断扩展名是否属于可展示或可打包的图像文件。
 bool imageExtension(const std::string& ext)
 {
-    return ext == "svg" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "ppm";
+    return ext == "svg" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "ppm" || ext == "bmp";
+}
+
+/// 递归收集订单目录中的图片，支持按相机拆分的子目录布局。
+void collectOrderImages(const std::string& path, std::vector<DirectoryEntry>* images)
+{
+    if (!images) {
+        return;
+    }
+    const std::vector<DirectoryEntry> entries = listDirectoryEntries(path);
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        if (hiddenName(entries[i].name)) {
+            continue;
+        }
+        if (entries[i].directory) {
+            collectOrderImages(entries[i].path, images);
+        } else if (imageExtension(extensionLower(entries[i].name))
+                   && entries[i].name.find("pointcloud_view") == std::string::npos) {
+            images->push_back(entries[i]);
+        }
+    }
+}
+
+/// 返回拍摄页四个主视图的固定排序，其余相机原图排在后面。
+int capturedImageRank(const DirectoryEntry& image)
+{
+    const std::string cameraDirectory = fileNameOnly(parentDirectory(image.path));
+    if (cameraDirectory == "left" && image.name.find("_color.bmp") != std::string::npos) return 0;
+    if (cameraDirectory == "front" && image.name.find("_color.bmp") != std::string::npos) return 1;
+    if (cameraDirectory == "right" && image.name.find("_color.bmp") != std::string::npos) return 2;
+    if (cameraDirectory == "bottom" && image.name.find("_color.bmp") != std::string::npos) return 3;
+    if (cameraDirectory == "orbbec_color" && image.name.find("_left.bmp") != std::string::npos) return 0;
+    if (cameraDirectory == "hik_color" && image.name.find("_front.bmp") != std::string::npos) return 1;
+    if (cameraDirectory == "orbbec_color" && image.name.find("_right.bmp") != std::string::npos) return 2;
+    if (cameraDirectory == "orbbec_color" && image.name.find("_bottom.bmp") != std::string::npos) return 3;
+    return 4;
 }
 
 /// 扫描订单目录中的图片、PLY 和预览图。
@@ -537,29 +572,39 @@ DataRootOrder scanOrderDirectory(const DirectoryEntry& entry)
     order.orderNo = entry.name;
     order.createdAt = createdAtFromCode(order.orderNo, entry.modified);
     std::time_t updated = entry.modified;
-    const std::vector<DirectoryEntry> files = listDirectoryEntries(entry.path);
-    for (std::size_t i = 0; i < files.size(); ++i) {
-        if (files[i].directory || hiddenName(files[i].name)) {
+
+    const std::vector<DirectoryEntry> rootFiles = listDirectoryEntries(entry.path);
+    for (std::size_t i = 0; i < rootFiles.size(); ++i) {
+        if (rootFiles[i].directory || hiddenName(rootFiles[i].name)) {
             continue;
         }
-        const std::string ext = extensionLower(files[i].name);
+        const std::string ext = extensionLower(rootFiles[i].name);
         if (ext == "ply" && order.plyPath.empty()) {
-            order.plyPath = files[i].path;
-            updated = std::max(updated, files[i].modified);
-            continue;
+            order.plyPath = rootFiles[i].path;
+            updated = std::max(updated, rootFiles[i].modified);
+        } else if (imageExtension(ext) && rootFiles[i].name.find("pointcloud_view") != std::string::npos) {
+            order.previewPath = rootFiles[i].path;
+            updated = std::max(updated, rootFiles[i].modified);
         }
-        if (!imageExtension(ext)) {
-            continue;
-        }
-        if (files[i].name.find("pointcloud_view") != std::string::npos) {
-            order.previewPath = files[i].path;
-            updated = std::max(updated, files[i].modified);
-            continue;
-        }
-        order.imagePaths.push_back(files[i].path);
-        updated = std::max(updated, files[i].modified);
-        if (order.previewPath.empty() && files[i].name.find("_front.") != std::string::npos) {
-            order.previewPath = files[i].path;
+    }
+
+    std::vector<DirectoryEntry> images;
+    collectOrderImages(entry.path, &images);
+    std::stable_sort(images.begin(), images.end(), [](const DirectoryEntry& a, const DirectoryEntry& b) {
+        const int rankA = capturedImageRank(a);
+        const int rankB = capturedImageRank(b);
+        return rankA == rankB ? a.path < b.path : rankA < rankB;
+    });
+    for (std::size_t i = 0; i < images.size(); ++i) {
+        order.imagePaths.push_back(images[i].path);
+        updated = std::max(updated, images[i].modified);
+        const std::string cameraDirectory = fileNameOnly(parentDirectory(images[i].path));
+        const bool frontModuleColor = cameraDirectory == "front"
+            && images[i].name.find("_color.bmp") != std::string::npos;
+        const bool legacyHikColor = cameraDirectory == "hik_color"
+            && images[i].name.find("_front.bmp") != std::string::npos;
+        if (order.previewPath.empty() && (frontModuleColor || legacyHikColor)) {
+            order.previewPath = images[i].path;
         }
     }
     if (order.previewPath.empty() && !order.imagePaths.empty()) {
@@ -895,6 +940,7 @@ std::string contentTypeForImagePath(const std::string& path)
     if (ext == "png") return "image/png";
     if (ext == "jpg" || ext == "jpeg") return "image/jpeg";
     if (ext == "gif") return "image/gif";
+    if (ext == "bmp") return "image/bmp";
     if (ext == "ppm") return "image/x-portable-pixmap";
     return "application/octet-stream";
 }
@@ -1032,13 +1078,27 @@ std::string buildPointCloudPreviewSvg(const std::string& plyPath, const std::str
 
 } // namespace
 
+/// 将应用配置转换为组合相机角色和触发配置。
+static MultiCameraConfig makeMultiCameraConfig(const AppConfig& config)
+{
+    MultiCameraConfig cameraConfig;
+    cameraConfig.triggerWorkflow = config.multiCameraTriggerWorkflow;
+    cameraConfig.orbbecLeftSerial = config.orbbecLeftSerial;
+    cameraConfig.orbbecRightSerial = config.orbbecRightSerial;
+    cameraConfig.orbbecBottomSerial = config.orbbecBottomSerial;
+    cameraConfig.hikvisionFrontSerial = config.hikvisionFrontSerial;
+    cameraConfig.mindvisionStereoSerial = config.mindvisionStereoSerial;
+    cameraConfig.triggerTimeoutMs = config.cameraTriggerTimeoutMs;
+    return cameraConfig;
+}
+
 /// API 隐藏实现，集中持有数据库、相机和运行配置。
 class App::Impl {
 public:
     /// 初始化数据库、相机门面和数据目录配置。
     explicit Impl(const AppConfig& config)
         : database_(config.databasePath),
-          camera_(config.imageRoot, config.cameraMode),
+          camera_(config.imageRoot, config.cameraMode, makeMultiCameraConfig(config)),
           imageRoot_(CameraManager::normalizeRoot(config.imageRoot)),
           config_(config),
           backendRoot_(backendRootFromConfigPath(config.configPath))
@@ -1582,7 +1642,7 @@ private:
         const std::string path = query.count("path") ? query["path"] : "";
         const bool underRoot = path.find(imageRoot_ + "/") == 0;
         const std::string ext = extensionLower(path);
-        const bool isImage = ext == "svg" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "ppm";
+        const bool isImage = ext == "svg" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "ppm" || ext == "bmp";
         if (path.empty() || !underRoot || !isImage || path.find("..") != std::string::npos) {
             return jsonResponse(req, "{\"error\":\"invalid image path\"}", http::status::bad_request);
         }
