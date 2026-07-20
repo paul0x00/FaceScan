@@ -8,6 +8,8 @@
 #include <boost/beast/http.hpp>
 #include <gtest/gtest.h>
 
+#include <fstream>
+
 using namespace facescan;
 namespace http = boost::beast::http;
 
@@ -48,6 +50,43 @@ TEST(AppTest, UnknownEndpointReturnsNotFound)
 
     EXPECT_EQ(http::status::not_found, res.result());
     EXPECT_EQ("{\"error\":\"not found\"}", res.body());
+}
+
+/// 验证点云编辑 API 在数据根目录内按压缩索引区间覆盖本地 PLY。
+TEST(AppTest, PointCloudEditEndpointUpdatesLocalPly)
+{
+    facescan_test::ScopedTempDir temp("app_point_cloud_edit");
+    AppConfig config;
+    config.databasePath = temp.path() + "/db/facescan.sqlite3";
+    config.imageRoot = temp.path() + "/images";
+    config.configPath = temp.path() + "/config/app.json";
+    ensureDirectory(config.imageRoot + "/order");
+    const std::string plyPath = config.imageRoot + "/order/cloud.ply";
+    std::ofstream out(plyPath.c_str(), std::ios::binary | std::ios::trunc);
+    out << "ply\nformat ascii 1.0\nelement vertex 4\n"
+        << "property float x\nproperty float y\nproperty float z\nend_header\n"
+        << "0 0 0\n1 0 0\n2 0 0\n3 0 0\n";
+    out.close();
+
+    App app(config);
+    http::request<http::string_body> req(http::verb::put, "/api/pointcloud/edit", 11);
+    req.body() = "{\"path\":\"" + plyPath + "\",\"expectedPointCount\":4,\"deletedRanges\":[1,2]}";
+    req.prepare_payload();
+
+    const http::response<http::string_body> res = app.handle(req);
+
+    ASSERT_EQ(http::status::ok, res.result()) << res.body();
+    EXPECT_NE(std::string::npos, res.body().find("\"pointCount\":2"));
+    const std::string body = readFileText(plyPath);
+    EXPECT_NE(std::string::npos, body.find("element vertex 2\n"));
+    EXPECT_NE(std::string::npos, body.find("0 0 0\n"));
+    EXPECT_EQ(std::string::npos, body.find("1 0 0\n"));
+    EXPECT_EQ(std::string::npos, body.find("2 0 0\n"));
+    EXPECT_NE(std::string::npos, body.find("3 0 0\n"));
+
+    const http::response<http::string_body> duplicateRes = app.handle(req);
+    EXPECT_EQ(http::status::bad_request, duplicateRes.result());
+    EXPECT_EQ(body, readFileText(plyPath));
 }
 
 /// 验证相机参数 API 可读取和更新。
@@ -105,7 +144,6 @@ TEST(AppTest, SavesMultiCameraConfiguration)
     EXPECT_NE(std::string::npos, body.find("\"mindvisionStereoSerial\": \"MV-S\""));
     EXPECT_NE(std::string::npos, body.find("\"cameraTriggerTimeoutMs\": 1500"));
 }
-
 
 /// 验证数据根反扫支持相机子目录 BMP，并保持拍摄页四视图顺序。
 TEST(AppTest, RestoresCameraDirectoryBmpsAndServesBmpContentType)

@@ -80,6 +80,16 @@ export async function reconstructOrder(id: number, options: { columns?: number; 
   return data
 }
 
+/** 将编辑后的删除区间写回本地 PLY 文件。 */
+export async function savePointCloudEdit(path: string, expectedPointCount: number, deletedRanges: number[]) {
+  const { data } = await api.put<{ ok: boolean; pointCount: number; removedPointCount: number }>('/pointcloud/edit', {
+    path,
+    expectedPointCount,
+    deletedRanges
+  })
+  return data
+}
+
 /** 构造 PLY 文件读取 URL。 */
 export function pointCloudFileUrl(path: string) {
   return `/api/pointcloud/file?path=${encodeURIComponent(path)}`

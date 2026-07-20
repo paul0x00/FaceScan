@@ -3,6 +3,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 
 namespace facescan {
@@ -101,7 +102,66 @@ int jsonIntValue(const std::string& body, const std::string& key)
     while (pos < body.size() && std::isspace(static_cast<unsigned char>(body[pos]))) {
         ++pos;
     }
-    return std::atoi(body.c_str() + pos);
+    char* end = NULL;
+    const long value = std::strtol(body.c_str() + pos, &end, 10);
+    if (!end || end == body.c_str() + pos
+        || value < std::numeric_limits<int>::min()
+        || value > std::numeric_limits<int>::max()) {
+        return 0;
+    }
+    return static_cast<int>(value);
+}
+
+/// 从简单 JSON 文本中查找并解析整数数组字段。
+std::vector<int> jsonIntArrayValue(const std::string& body, const std::string& key)
+{
+    std::vector<int> values;
+    const std::string needle = "\"" + key + "\"";
+    std::size_t pos = body.find(needle);
+    if (pos == std::string::npos) {
+        return values;
+    }
+    pos = body.find(':', pos + needle.size());
+    if (pos == std::string::npos) {
+        return values;
+    }
+    ++pos;
+    while (pos < body.size() && std::isspace(static_cast<unsigned char>(body[pos]))) {
+        ++pos;
+    }
+    if (pos >= body.size() || body[pos] != '[') {
+        return values;
+    }
+    ++pos;
+    while (pos < body.size()) {
+        while (pos < body.size() && std::isspace(static_cast<unsigned char>(body[pos]))) {
+            ++pos;
+        }
+        if (pos < body.size() && body[pos] == ']') {
+            return values;
+        }
+
+        char* end = NULL;
+        const long value = std::strtol(body.c_str() + pos, &end, 10);
+        if (!end || end == body.c_str() + pos
+            || value < std::numeric_limits<int>::min()
+            || value > std::numeric_limits<int>::max()) {
+            return std::vector<int>();
+        }
+        values.push_back(static_cast<int>(value));
+        pos = static_cast<std::size_t>(end - body.c_str());
+        while (pos < body.size() && std::isspace(static_cast<unsigned char>(body[pos]))) {
+            ++pos;
+        }
+        if (pos < body.size() && body[pos] == ']') {
+            return values;
+        }
+        if (pos >= body.size() || body[pos] != ',') {
+            return std::vector<int>();
+        }
+        ++pos;
+    }
+    return std::vector<int>();
 }
 
 /// 判断简单 JSON 文本中是否包含字段。

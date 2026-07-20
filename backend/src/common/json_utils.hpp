@@ -2,6 +2,7 @@
 
 #include <map>
 #include <string>
+#include <vector>
 
 namespace facescan {
 
@@ -15,6 +16,8 @@ std::string jsonPair(const std::string& key, int value);
 std::string jsonStringValue(const std::string& body, const std::string& key);
 /// 从简单 JSON 请求体中读取整数字段。
 int jsonIntValue(const std::string& body, const std::string& key);
+/// 从简单 JSON 请求体中读取整数数组字段。
+std::vector<int> jsonIntArrayValue(const std::string& body, const std::string& key);
 /// 判断简单 JSON 请求体是否包含指定字段。
 bool jsonHasKey(const std::string& body, const std::string& key);
 /// 从简单 JSON 请求体中读取布尔字段。

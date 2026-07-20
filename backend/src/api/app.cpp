@@ -1,6 +1,7 @@
 #include "app.hpp"
 
 #include "../algorithm/color_point_cloud_sdk.hpp"
+#include "../algorithm/point_cloud_editor.hpp"
 #include "../camera/camera_manager.hpp"
 #include "../common/file_utils.hpp"
 #include "../common/json_utils.hpp"
@@ -26,6 +27,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -1254,6 +1256,9 @@ public:
             if (req.method() == http::verb::get && path == "/api/pointcloud/file") {
                 return pointCloudFile(req, target);
             }
+            if ((req.method() == http::verb::put || req.method() == http::verb::post) && path == "/api/pointcloud/edit") {
+                return editPointCloud(req);
+            }
             if (req.method() == http::verb::get && path == "/api/files/image") {
                 return imageFile(req, target);
             }
@@ -1279,6 +1284,8 @@ private:
     CameraManager camera_;
     /// 当前患者数据保存根目录。
     std::string imageRoot_;
+    /// 串行化点云文件覆盖，避免重复离开请求并发写同一临时文件。
+    std::mutex pointCloudEditMutex_;
     /// 当前运行配置，设置保存时会写回磁盘。
     AppConfig config_;
     /// backend 工程根目录，用于解析相对路径。
@@ -1616,6 +1623,57 @@ private:
             folder + "/" + safeOrderName + "_pointcloud_view.svg");
         database_.setPointCloudResult(orderId, result.plyPath, previewPath);
         return jsonResponse(req, pointCloudJson(orderId, result, previewPath));
+    }
+
+    /// API：按原始顶点索引更新数据根目录下的 ASCII PLY 文件。
+    http::response<http::string_body> editPointCloud(const http::request<http::string_body>& req)
+    {
+        const std::string path = jsonStringValue(req.body(), "path");
+        const bool underRoot = path.find(imageRoot_ + "/") == 0;
+        const bool isPly = extensionLower(path) == "ply";
+        if (path.empty() || !underRoot || !isPly || path.find("..") != std::string::npos) {
+            return jsonResponse(req, "{\"error\":\"invalid point cloud path\"}", http::status::bad_request);
+        }
+
+        const int expectedPointCount = jsonIntValue(req.body(), "expectedPointCount");
+        if (expectedPointCount <= 0) {
+            return jsonResponse(req, "{\"error\":\"expectedPointCount is required\"}", http::status::bad_request);
+        }
+        const std::vector<int> flatRanges = jsonIntArrayValue(req.body(), "deletedRanges");
+        if (flatRanges.empty() || flatRanges.size() % 2 != 0) {
+            return jsonResponse(req, "{\"error\":\"deletedRanges must contain start/count pairs\"}", http::status::bad_request);
+        }
+        std::vector<std::size_t> deletedIndices;
+        for (std::size_t i = 0; i < flatRanges.size(); i += 2) {
+            const int start = flatRanges[i];
+            const int count = flatRanges[i + 1];
+            if (start < 0 || count <= 0 || start >= expectedPointCount || count > expectedPointCount - start) {
+                return jsonResponse(req, "{\"error\":\"invalid deleted point range\"}", http::status::bad_request);
+            }
+            if (deletedIndices.size() + static_cast<std::size_t>(count) > 5000000) {
+                return jsonResponse(req, "{\"error\":\"too many deleted points\"}", http::status::bad_request);
+            }
+            for (int offset = 0; offset < count; ++offset) {
+                deletedIndices.push_back(static_cast<std::size_t>(start + offset));
+            }
+        }
+
+        const std::lock_guard<std::mutex> lock(pointCloudEditMutex_);
+        const PointCloudEditResult result = removePointCloudVertices(
+            path,
+            deletedIndices,
+            static_cast<std::size_t>(expectedPointCount));
+        if (!result.ok) {
+            return jsonResponse(req, "{\"error\":\"" + escapeJson(result.message) + "\"}", http::status::bad_request);
+        }
+        const std::string previewPath = pointCloudPreviewPathForPly(path);
+        if (!previewPath.empty()) {
+            buildPointCloudPreviewSvg(path, previewPath);
+        }
+        std::ostringstream os;
+        os << "{\"ok\":true,\"pointCount\":" << result.pointCount
+           << ",\"removedPointCount\":" << result.removedPointCount << "}";
+        return jsonResponse(req, os.str());
     }
 
     /// API：读取数据根目录下的 PLY 文件。

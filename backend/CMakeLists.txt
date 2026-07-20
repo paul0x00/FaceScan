@@ -52,6 +52,7 @@ endif()
 
 add_library(facescan_core STATIC
     src/algorithm/color_point_cloud_sdk.cpp
+    src/algorithm/point_cloud_editor.cpp
     src/api/app.cpp
     src/camera/camera_manager.cpp
     src/camera/multi_camera_device.cpp
@@ -184,6 +185,7 @@ if(BUILD_TESTING)
         tests/color_point_cloud_sdk_test.cpp
         tests/database_test.cpp
         tests/json_utils_test.cpp
+        tests/point_cloud_editor_test.cpp
     )
 
     target_include_directories(facescan_tests BEFORE PRIVATE

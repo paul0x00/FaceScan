@@ -22,6 +22,22 @@ TEST(JsonUtilsTest, ReadsSimpleStringAndIntegerFields)
     EXPECT_EQ(0, jsonIntValue(body, "missing"));
 }
 
+/// 验证轻量 JSON 整数数组字段读取。
+TEST(JsonUtilsTest, ReadsIntegerArrayFields)
+{
+    const std::vector<int> values = jsonIntArrayValue("{\"deletedRanges\":[1, 3, 8, 2]}", "deletedRanges");
+
+    ASSERT_EQ(4u, values.size());
+    EXPECT_EQ(1, values[0]);
+    EXPECT_EQ(3, values[1]);
+    EXPECT_EQ(8, values[2]);
+    EXPECT_EQ(2, values[3]);
+    EXPECT_TRUE(jsonIntArrayValue("{}", "deletedRanges").empty());
+    EXPECT_TRUE(jsonIntArrayValue("{\"deletedRanges\":[2147483648]}", "deletedRanges").empty());
+    EXPECT_TRUE(jsonIntArrayValue("{\"deletedRanges\":[1,2}", "deletedRanges").empty());
+    EXPECT_EQ(0, jsonIntValue("{\"count\":2147483648}", "count"));
+}
+
 /// 验证轻量 JSON 布尔字段读取和字段存在判断。
 TEST(JsonUtilsTest, ReadsSimpleBooleanFieldsAndKeyPresence)
 {

@@ -27,3 +27,5 @@ docs/*
 !docs/项目接手指南.md
 design-mockups/*
 output/playwright/facescan-functional-spec
+.playwright-cli/*
+output/playwright/measurement/

@@ -1680,6 +1680,399 @@ button:disabled,
   display: block;
 }
 
+.pointcloud-edit-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  touch-action: none;
+}
+
+.pointcloud-edit-overlay.mode-lasso,
+.pointcloud-edit-overlay.mode-brush,
+.pointcloud-edit-overlay.mode-measure {
+  pointer-events: auto;
+}
+
+.pointcloud-edit-overlay.mode-lasso {
+  cursor: crosshair;
+}
+
+.pointcloud-edit-overlay.mode-brush {
+  cursor: none;
+}
+
+.pointcloud-edit-overlay.mode-measure {
+  cursor: crosshair;
+}
+
+.pointcloud-lasso-fill {
+  fill: rgba(15, 127, 130, 0.16);
+  stroke: none;
+}
+
+.pointcloud-lasso-line {
+  fill: none;
+  stroke: #0f7f82;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 7 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.pointcloud-brush-ring {
+  fill: rgba(219, 77, 77, 0.12);
+  stroke: #d94b4b;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.pointcloud-measure-line {
+  stroke: #0f7f82;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.pointcloud-measure-line.type-angle {
+  stroke: #3978b8;
+}
+
+.pointcloud-measure-line.type-symmetry {
+  stroke: #8b5fc7;
+  stroke-dasharray: 7 4;
+}
+
+.pointcloud-measure-line.active {
+  stroke: #e08b24;
+  stroke-dasharray: 6 4;
+}
+
+.pointcloud-measure-point {
+  fill: #ffffff;
+  stroke: #0f7f82;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.pointcloud-measure-point.active {
+  fill: #fff4dd;
+  stroke: #e08b24;
+}
+
+.pointcloud-measure-index {
+  fill: #8a5616;
+  font-size: 9px;
+  font-weight: 900;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.pointcloud-measure-label rect {
+  fill: rgba(37, 55, 70, 0.9);
+  stroke: rgba(255, 255, 255, 0.75);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.pointcloud-measure-label text {
+  fill: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.pointcloud-stage-pill {
+  display: grid;
+  gap: 8px;
+}
+
+.pointcloud-unsaved {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  gap: 6px;
+  padding: 7px 11px;
+  color: #9a6508;
+  font-size: 12px;
+  font-weight: 800;
+  background: rgba(255, 248, 224, 0.94);
+  border: 1px solid #efd89a;
+  border-radius: 999px;
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(6px);
+}
+
+.pointcloud-editpanel {
+  position: absolute;
+  top: 250px;
+  right: 154px;
+  z-index: 3;
+  display: grid;
+  width: 320px;
+  gap: 14px;
+  padding: 16px;
+  background: rgba(247, 250, 252, 0.97);
+  border: 1px solid #d4dee6;
+  border-radius: 14px;
+  box-shadow: 0 18px 36px rgba(51, 65, 85, 0.16);
+  backdrop-filter: blur(12px);
+}
+
+.pointcloud-measurepanel {
+  position: absolute;
+  top: 192px;
+  right: 154px;
+  z-index: 3;
+  display: grid;
+  width: 350px;
+  max-height: calc(100% - 214px);
+  gap: 13px;
+  padding: 16px;
+  overflow: auto;
+  background: rgba(247, 250, 252, 0.98);
+  border: 1px solid #d4dee6;
+  border-radius: 14px;
+  box-shadow: 0 18px 36px rgba(51, 65, 85, 0.16);
+  backdrop-filter: blur(12px);
+}
+
+.pointcloud-measure-count {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  color: #0f7275;
+  font-size: 10px;
+  font-weight: 900;
+  background: #e8f7f6;
+  border: 1px solid #c8e5e2;
+  border-radius: 999px;
+}
+
+.pointcloud-measure-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.pointcloud-measure-guide {
+  display: grid;
+  gap: 5px;
+  padding: 11px 12px;
+  color: #5f707f;
+  background: #ffffff;
+  border: 1px solid #d7e0e7;
+  border-radius: 10px;
+}
+
+.pointcloud-measure-guide strong {
+  color: #344554;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.pointcloud-measure-guide span {
+  color: #7b8a97;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.pointcloud-measure-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pointcloud-measure-results {
+  display: grid;
+  max-height: 230px;
+  gap: 7px;
+  padding-right: 2px;
+  overflow: auto;
+}
+
+.pointcloud-measure-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 10px 10px 12px;
+  background: #ffffff;
+  border: 1px solid #d7e0e7;
+  border-radius: 10px;
+}
+
+.pointcloud-measure-result > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.pointcloud-measure-result strong {
+  color: #344554;
+  font-size: 11px;
+}
+
+.pointcloud-measure-result span {
+  color: var(--teal);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.pointcloud-measure-result small {
+  overflow: hidden;
+  color: #7b8a97;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pointcloud-measure-result button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: #8b99a5;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.pointcloud-measure-result button:hover {
+  color: var(--red);
+  background: #fff0f0;
+}
+
+.pointcloud-editpanel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pointcloud-editpanel-head > div {
+  display: grid;
+  gap: 4px;
+}
+
+.pointcloud-editpanel-head strong {
+  color: #344554;
+  font-size: 14px;
+}
+
+.pointcloud-editpanel-head span:not(.pointcloud-edit-count) {
+  color: #7b8a97;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.pointcloud-edit-count {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  color: #a13f3f;
+  font-size: 10px;
+  font-weight: 900;
+  background: #fff0f0;
+  border: 1px solid #f1cccc;
+  border-radius: 999px;
+}
+
+.pointcloud-edit-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.pointcloud-editbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  height: 38px;
+  padding: 0 8px;
+  color: #526474;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  background: #ffffff;
+  border: 1px solid #d7e0e7;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.pointcloud-editbtn:hover:not(:disabled) {
+  color: var(--teal);
+  background: #edf8f7;
+  border-color: #c8e5e2;
+}
+
+.pointcloud-editbtn.active {
+  color: #ffffff;
+  background: var(--teal);
+  border-color: var(--teal);
+  box-shadow: 0 8px 16px rgba(15, 127, 130, 0.16);
+}
+
+.pointcloud-editbtn.danger:hover:not(:disabled) {
+  color: var(--red);
+  background: #fff1f1;
+  border-color: #f3cccc;
+}
+
+.pointcloud-editbtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.pointcloud-radius-control {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  color: #647483;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  background: #ffffff;
+  border: 1px solid #d7e0e7;
+  border-radius: 10px;
+}
+
+.pointcloud-radius-control input {
+  width: 100%;
+  accent-color: var(--teal);
+  cursor: pointer;
+}
+
+.pointcloud-radius-control strong {
+  min-width: 44px;
+  color: var(--teal);
+  font-size: 11px;
+  text-align: right;
+}
+
+.pointcloud-edit-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 2px;
+}
+
 .pointcloud-stage-pill {
   position: absolute;
   top: 18px;
@@ -1745,7 +2138,7 @@ button:disabled,
 .pointcloud-viewpanel {
   position: absolute;
   top: 114px;
-  right: 116px;
+  right: 154px;
   z-index: 2;
   display: grid;
   grid-template-columns: repeat(2, 52px);
@@ -1876,10 +2269,21 @@ button:disabled,
     grid-auto-flow: column;
   }
 
-  .pointcloud-viewpanel {
+  .pointcloud-viewpanel,
+  .pointcloud-editpanel,
+  .pointcloud-measurepanel {
     right: 18px;
-    bottom: 72px;
+    bottom: 78px;
     top: auto;
+  }
+
+  .pointcloud-editpanel {
+    width: min(320px, calc(100% - 36px));
+  }
+
+  .pointcloud-measurepanel {
+    width: min(350px, calc(100% - 36px));
+    max-height: calc(100% - 96px);
   }
 
   .pointcloud-hintbar {
