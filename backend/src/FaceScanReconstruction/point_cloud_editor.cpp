@@ -117,6 +117,8 @@ PointCloudEditResult removePointCloudVertices(
 
     std::ostringstream trailing;
     trailing << input.rdbuf();
+    input.close();
+
     const std::size_t remainingCount = vertexCount - sortedIndices.size();
     headerLines[vertexHeaderIndex] = "element vertex " + std::to_string(remainingCount);
 

@@ -1,6 +1,7 @@
 #include "json_utils.hpp"
 
 #include <cctype>
+#include <cerrno>
 #include <cstdlib>
 #include <iomanip>
 #include <limits>
@@ -103,8 +104,9 @@ int jsonIntValue(const std::string& body, const std::string& key)
         ++pos;
     }
     char* end = NULL;
+    errno = 0;
     const long value = std::strtol(body.c_str() + pos, &end, 10);
-    if (!end || end == body.c_str() + pos
+    if (errno == ERANGE || !end || end == body.c_str() + pos
         || value < std::numeric_limits<int>::min()
         || value > std::numeric_limits<int>::max()) {
         return 0;
@@ -142,8 +144,9 @@ std::vector<int> jsonIntArrayValue(const std::string& body, const std::string& k
         }
 
         char* end = NULL;
+        errno = 0;
         const long value = std::strtol(body.c_str() + pos, &end, 10);
-        if (!end || end == body.c_str() + pos
+        if (errno == ERANGE || !end || end == body.c_str() + pos
             || value < std::numeric_limits<int>::min()
             || value > std::numeric_limits<int>::max()) {
             return std::vector<int>();
