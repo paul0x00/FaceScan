@@ -1,5 +1,5 @@
-#include "../src/camera/camera_manager.hpp"
-#include "../src/camera/vendor_camera.hpp"
+#include "../src/FaceScanCamera/camera_manager.hpp"
+#include "../src/FaceScanCamera/vendor_camera.hpp"
 
 #include "../src/common/file_utils.hpp"
 #include "test_utils.hpp"

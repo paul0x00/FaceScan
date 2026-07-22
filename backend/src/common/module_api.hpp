@@ -1,0 +1,39 @@
+#pragma once
+
+#if defined(_WIN32) || defined(__CYGWIN__)
+    #define FACESCAN_SYMBOL_EXPORT __declspec(dllexport)
+    #define FACESCAN_SYMBOL_IMPORT __declspec(dllimport)
+#else
+    #define FACESCAN_SYMBOL_EXPORT __attribute__((visibility("default")))
+    #define FACESCAN_SYMBOL_IMPORT __attribute__((visibility("default")))
+#endif
+
+#if defined(FACESCAN_BUILD_CONFIG)
+    #define FACESCAN_CONFIG_API FACESCAN_SYMBOL_EXPORT
+#else
+    #define FACESCAN_CONFIG_API FACESCAN_SYMBOL_IMPORT
+#endif
+
+#if defined(FACESCAN_BUILD_DATABASE)
+    #define FACESCAN_DATABASE_API FACESCAN_SYMBOL_EXPORT
+#else
+    #define FACESCAN_DATABASE_API FACESCAN_SYMBOL_IMPORT
+#endif
+
+#if defined(FACESCAN_BUILD_CAMERA)
+    #define FACESCAN_CAMERA_API FACESCAN_SYMBOL_EXPORT
+#else
+    #define FACESCAN_CAMERA_API FACESCAN_SYMBOL_IMPORT
+#endif
+
+#if defined(FACESCAN_BUILD_RECONSTRUCTION)
+    #define FACESCAN_RECONSTRUCTION_API FACESCAN_SYMBOL_EXPORT
+#else
+    #define FACESCAN_RECONSTRUCTION_API FACESCAN_SYMBOL_IMPORT
+#endif
+
+#if defined(FACESCAN_BUILD_SERVICE)
+    #define FACESCAN_SERVICE_API FACESCAN_SYMBOL_EXPORT
+#else
+    #define FACESCAN_SERVICE_API FACESCAN_SYMBOL_IMPORT
+#endif

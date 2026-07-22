@@ -1,6 +1,7 @@
 #pragma once
 
-#include "config/app_config.hpp"
+#include "FaceScanConfig/app_config.hpp"
+#include "common/module_api.hpp"
 
 #include <boost/beast/http.hpp>
 
@@ -9,7 +10,7 @@
 namespace facescan {
 
 /// HTTP API 应用层，负责路由请求、调用服务并生成响应。
-class App {
+class FACESCAN_SERVICE_API App {
 public:
     /// 使用运行配置构造应用实例。
     explicit App(const AppConfig& config);

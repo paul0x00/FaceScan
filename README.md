@@ -63,7 +63,7 @@ Windows 推荐使用 MSVC / Visual Studio 2022 工具链：
 $env:VCPKG_ROOT = "C:\src\vcpkg"
 cmake -S backend --preset windows
 cmake --build backend/build --config Release
-.\backend\build\Release\facescan_backend.exe 8080
+.\backend\build\Release\FaceScanBackend.exe 8080
 ```
 
 macOS 使用 vcpkg + Ninja 预设：
@@ -72,7 +72,7 @@ macOS 使用 vcpkg + Ninja 预设：
 export VCPKG_ROOT="$HOME/vcpkg"
 cmake -S backend --preset macos
 cmake --build backend/build
-./backend/build/facescan_backend 8080
+./backend/build/FaceScanBackend 8080
 ```
 
 首次配置会自动安装 vcpkg 依赖（需联网，约几分钟）。未安装 vcpkg 时可回退系统依赖（macOS 需 Homebrew 安装 `boost`、`sqlite3`、`zlib`）：`cmake -S backend -B backend/build -G Ninja`。注意两种工具链或生成器之间切换需先删除 `backend/build/`。
@@ -109,7 +109,7 @@ ctest --test-dir backend/build --output-on-failure
 说明：
 
 - GoogleTest 优先来自 vcpkg；未使用 vcpkg 工具链时回退 FetchContent 在线下载。
-- `cmake --build backend/build` 编译后端、核心库和测试程序。
+- `cmake --build backend/build` 编译主程序、各后端动态模块和测试程序。
 - `ctest --test-dir backend/build --output-on-failure` 执行测试；失败时输出具体失败原因。
 
 ## 配置
@@ -173,6 +173,22 @@ ctest --test-dir backend/build --output-on-failure
 
 一次完整触发共保存 12 张 BMP。接口和数据根反扫会将前四张固定排序为：左 Orbbec 彩色、海康正面彩色、右 Orbbec 彩色、下 Orbbec 彩色；点云重建优先使用迈德威视左右图恢复几何，并使用海康正面彩色图贴纹理。历史 PPM/PGM 数据仍可读取。
 
+## 后端模块化产物
+
+后端除进程入口外均按职责构建为动态模块。Windows 在 `backend/build/Release/` 生成 DLL 和对应导入库，macOS 在 `backend/build/` 生成 dylib：
+
+| CMake 目标 | Windows 产物 | 职责 |
+|---|---|---|
+| `FaceScanCamera` | `FaceScanCamera.dll` | 相机门面、模拟设备和厂商 SDK 适配 |
+| `FaceScanConfig` | `FaceScanConfig.dll` | 配置默认值、加载和保存 |
+| `FaceScanReconstruction` | `FaceScanReconstruction.dll` | 点云重建和编辑 |
+| `FaceScanService` | `FaceScanService.dll` | HTTP API、监听和业务编排 |
+| `FaceScanDatabase` | `FaceScanDatabase.dll` | SQLite 持久化和数据目录同步 |
+| `facescan_common` | 静态库 | 各动态模块内部使用的文件、JSON、BMP 和时间工具，不作为运行时模块发布 |
+| `FaceScanBackend` | `FaceScanBackend.exe` | 加载配置、解析启动参数并调用服务模块 |
+
+运行时依赖方向为：`FaceScanBackend → FaceScanConfig + FaceScanService → FaceScanCamera + FaceScanReconstruction + FaceScanDatabase`。Windows 构建会把已检测到的 Orbbec、海康和迈德威视 SDK 运行时文件复制到 `FaceScanCamera.dll` 所在的输出目录。
+
 ## 项目结构
 
 ```text
@@ -182,13 +198,13 @@ ctest --test-dir backend/build --output-on-failure
 │   ├── config/            # 后端配置示例和本地配置
 │   ├── data/              # SQLite、采集图片、点云和预览图
 │   ├── src/
-│   │   ├── algorithm/     # 点云重建算法
-│   │   ├── api/           # HTTP API 编排
-│   │   ├── camera/        # 模拟/真实相机设备封装
-│   │   ├── common/        # 模型、文件、JSON、时间工具
-│   │   ├── config/        # 应用配置读取与保存
-│   │   ├── database/      # SQLite 持久化
-│   │   └── server/        # Boost.Beast HTTP 服务
+│   │   ├── FaceScanBackend/         # 后端进程入口
+│   │   ├── FaceScanCamera/          # 模拟/真实相机设备封装
+│   │   ├── FaceScanConfig/          # 应用配置读取与保存
+│   │   ├── FaceScanDatabase/        # SQLite 持久化
+│   │   ├── FaceScanReconstruction/  # 点云重建与编辑
+│   │   ├── FaceScanService/         # HTTP API、监听和业务编排
+│   │   └── common/                  # 模型、文件、JSON、时间工具
 │   └── tests/             # GoogleTest 测试
 ├── frontend/
 │   └── src/

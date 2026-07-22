@@ -19,7 +19,62 @@ endif()
 
 find_package(Boost REQUIRED)
 find_package(SQLite3 REQUIRED)
+find_package(Threads REQUIRED)
 find_package(ZLIB REQUIRED)
+
+# 所有模块共享源码目录作为公共头文件根目录，并统一 Windows 编译环境。
+function(facescan_configure_target target)
+    target_include_directories(${target} PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+
+    if(WIN32)
+        # Boost.Asio 在 Windows 上需要明确目标系统版本（0x0601 = Windows 7+）。
+        target_compile_definitions(${target} PUBLIC _WIN32_WINNT=0x0601 NOMINMAX)
+    endif()
+endfunction()
+
+# 动态模块默认隐藏内部实现，只导出带 FACESCAN_*_API 标记的接口。
+function(facescan_configure_shared_target target build_definition)
+    facescan_configure_target(${target})
+    target_compile_definitions(${target} PRIVATE ${build_definition})
+    set_target_properties(${target} PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES
+    )
+endfunction()
+
+# 公共工具无状态且只供各模块内部使用，保留为可嵌入动态库的静态基础层。
+add_library(facescan_common STATIC
+    src/common/bmp_utils.cpp
+    src/common/file_utils.cpp
+    src/common/json_utils.cpp
+    src/common/time_utils.cpp
+)
+facescan_configure_target(facescan_common)
+set_target_properties(facescan_common PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN YES
+)
+
+# 配置文件加载与保存模块。
+add_library(FaceScanConfig SHARED
+    src/FaceScanConfig/app_config.cpp
+)
+facescan_configure_shared_target(FaceScanConfig FACESCAN_BUILD_CONFIG)
+target_link_libraries(FaceScanConfig PRIVATE facescan_common)
+
+# SQLite 数据访问与数据目录同步模块。
+add_library(FaceScanDatabase SHARED
+    src/FaceScanDatabase/database.cpp
+)
+facescan_configure_shared_target(FaceScanDatabase FACESCAN_BUILD_DATABASE)
+target_include_directories(FaceScanDatabase PUBLIC ${SQLite3_INCLUDE_DIRS})
+target_link_libraries(FaceScanDatabase
+    PRIVATE facescan_common
+    PUBLIC SQLite3::SQLite3
+)
 
 # Orbbec SDK 为厂商闭源预编译包，不进 vcpkg 也不进 git；按平台放在
 # 3rdParty/orbbec/<platform>/ 下（见 3rdParty/README.md）；缺失时 mock 仍可用，硬件模式会明确报错。
@@ -50,46 +105,26 @@ else()
     message(STATUS "Orbbec SDK not found under ${FACESCAN_ORBBEC_SDK_DIR}; hardware camera mode will be unavailable")
 endif()
 
-add_library(facescan_core STATIC
-    src/algorithm/color_point_cloud_sdk.cpp
-    src/algorithm/point_cloud_editor.cpp
-    src/api/app.cpp
-    src/camera/camera_manager.cpp
-    src/camera/multi_camera_device.cpp
-    src/camera/vendor_camera.cpp
-    src/common/bmp_utils.cpp
-    src/common/file_utils.cpp
-    src/common/json_utils.cpp
-    src/common/time_utils.cpp
-    src/config/app_config.cpp
-    src/database/database.cpp
+# 相机控制模块；厂商 SDK 仅作为该 DLL 的私有依赖。
+add_library(FaceScanCamera SHARED
+    src/FaceScanCamera/camera_manager.cpp
+    src/FaceScanCamera/multi_camera_device.cpp
+    src/FaceScanCamera/vendor_camera.cpp
 )
-
-target_include_directories(facescan_core PUBLIC
-    src
-    ${SQLite3_INCLUDE_DIRS}
+facescan_configure_shared_target(FaceScanCamera FACESCAN_BUILD_CAMERA)
+target_link_libraries(FaceScanCamera PRIVATE
+    facescan_common
+    Threads::Threads
 )
-
-target_link_libraries(facescan_core PUBLIC
-    Boost::headers
-    SQLite3::SQLite3
-    ZLIB::ZLIB
-)
-
-if(WIN32)
-    # Boost.Asio 在 Windows 上需要明确目标系统版本（0x0601 = Windows 7+）
-    target_compile_definitions(facescan_core PUBLIC _WIN32_WINNT=0x0601 NOMINMAX)
-endif()
 
 if(ORBBEC_SDK_LIB)
-    target_sources(facescan_core PRIVATE src/camera/orbbec_multi_camera.cpp)
-    target_compile_definitions(facescan_core PUBLIC FACESCAN_WITH_ORBBEC)
-    target_include_directories(facescan_core PRIVATE "${ORBBEC_SDK_INCLUDE_DIR}")
-    target_link_libraries(facescan_core PUBLIC "${ORBBEC_SDK_LIB}")
+    target_sources(FaceScanCamera PRIVATE src/FaceScanCamera/orbbec_multi_camera.cpp)
+    target_compile_definitions(FaceScanCamera PRIVATE FACESCAN_WITH_ORBBEC)
+    target_include_directories(FaceScanCamera PRIVATE "${ORBBEC_SDK_INCLUDE_DIR}")
+    target_link_libraries(FaceScanCamera PRIVATE "${ORBBEC_SDK_LIB}")
     if(NOT WIN32)
-        set_target_properties(facescan_core PROPERTIES
-            BUILD_RPATH "${FACESCAN_ORBBEC_SDK_DIR}/lib"
-        )
+        set_property(TARGET FaceScanCamera APPEND PROPERTY
+            BUILD_RPATH "${FACESCAN_ORBBEC_SDK_DIR}/lib")
     endif()
 endif()
 
@@ -101,10 +136,10 @@ if(WIN32)
     set(HIKVISION_LIBRARY "${FACESCAN_HIKVISION_SDK_DIR}/lib/MvCameraControl.lib")
     if(EXISTS "${HIKVISION_INCLUDE}/MvCameraControl.h" AND EXISTS "${HIKVISION_LIBRARY}")
         message(STATUS "Hikvision SDK found: ${HIKVISION_LIBRARY}")
-        target_sources(facescan_core PRIVATE src/camera/hikvision_camera.cpp)
-        target_compile_definitions(facescan_core PUBLIC FACESCAN_WITH_HIKVISION)
-        target_include_directories(facescan_core PRIVATE "${HIKVISION_INCLUDE}")
-        target_link_libraries(facescan_core PUBLIC "${HIKVISION_LIBRARY}")
+        target_sources(FaceScanCamera PRIVATE src/FaceScanCamera/hikvision_camera.cpp)
+        target_compile_definitions(FaceScanCamera PRIVATE FACESCAN_WITH_HIKVISION)
+        target_include_directories(FaceScanCamera PRIVATE "${HIKVISION_INCLUDE}")
+        target_link_libraries(FaceScanCamera PRIVATE "${HIKVISION_LIBRARY}")
         set(HIKVISION_RUNTIME "${FACESCAN_HIKVISION_SDK_DIR}/bin/MvCameraControl.dll")
     else()
         message(STATUS "Hikvision SDK not found under ${FACESCAN_HIKVISION_SDK_DIR}; multi_camera mode will be unavailable")
@@ -117,53 +152,77 @@ if(WIN32)
     set(MINDVISION_LIBRARY "${FACESCAN_MINDVISION_SDK_DIR}/lib/MVCAMSDK_X64.lib")
     if(EXISTS "${MINDVISION_INCLUDE}/CameraApi.h" AND EXISTS "${MINDVISION_LIBRARY}")
         message(STATUS "MindVision SDK found: ${MINDVISION_LIBRARY}")
-        target_sources(facescan_core PRIVATE src/camera/mindvision_camera.cpp)
-        target_compile_definitions(facescan_core PUBLIC FACESCAN_WITH_MINDVISION)
-        target_include_directories(facescan_core PRIVATE "${MINDVISION_INCLUDE}")
-        target_link_libraries(facescan_core PUBLIC "${MINDVISION_LIBRARY}")
+        target_sources(FaceScanCamera PRIVATE src/FaceScanCamera/mindvision_camera.cpp)
+        target_compile_definitions(FaceScanCamera PRIVATE FACESCAN_WITH_MINDVISION)
+        target_include_directories(FaceScanCamera PRIVATE "${MINDVISION_INCLUDE}")
+        target_link_libraries(FaceScanCamera PRIVATE "${MINDVISION_LIBRARY}")
         set(MINDVISION_RUNTIME "${FACESCAN_MINDVISION_SDK_DIR}/bin/MVCAMSDK_X64.dll")
     else()
         message(STATUS "MindVision SDK not found under ${FACESCAN_MINDVISION_SDK_DIR}; multi_camera mode will be unavailable")
     endif()
 endif()
 
-add_executable(facescan_backend
-    src/main.cpp
-    src/server/http_server.cpp
+# 点云重建和点云编辑模块。
+add_library(FaceScanReconstruction SHARED
+    src/FaceScanReconstruction/color_point_cloud_sdk.cpp
+    src/FaceScanReconstruction/point_cloud_editor.cpp
+)
+facescan_configure_shared_target(FaceScanReconstruction FACESCAN_BUILD_RECONSTRUCTION)
+target_link_libraries(FaceScanReconstruction PRIVATE facescan_common)
+
+# HTTP API、监听和业务编排模块。
+add_library(FaceScanService SHARED
+    src/FaceScanService/app.cpp
+    src/FaceScanService/http_server.cpp
+)
+facescan_configure_shared_target(FaceScanService FACESCAN_BUILD_SERVICE)
+target_link_libraries(FaceScanService
+    PRIVATE
+        FaceScanCamera
+        FaceScanDatabase
+        FaceScanReconstruction
+        facescan_common
+        Threads::Threads
+        ZLIB::ZLIB
+    PUBLIC
+        FaceScanConfig
+        Boost::headers
 )
 
-target_link_libraries(facescan_backend PRIVATE
-    facescan_core
+# 主程序保留进程入口、配置加载、端口解析和服务启动流程。
+add_executable(FaceScanBackend
+    src/FaceScanBackend/main.cpp
+)
+facescan_configure_target(FaceScanBackend)
+target_link_libraries(FaceScanBackend PRIVATE
+    FaceScanConfig
+    FaceScanService
 )
 
-if(UNIX)
-    target_link_libraries(facescan_backend PRIVATE pthread)
-endif()
-
+# Windows 厂商 SDK 的运行时文件与相机 DLL 放在同一输出目录。
 if(ORBBEC_SDK_LIB AND WIN32)
-    # Windows SDK ships runtime files separately from the import library.
     file(GLOB ORBBEC_SDK_RUNTIME
         "${FACESCAN_ORBBEC_SDK_DIR}/bin/*.dll"
         "${FACESCAN_ORBBEC_SDK_DIR}/bin/*.xml")
 endif()
 
 if(WIN32)
-    set(FACESCAN_VENDOR_RUNTIME)
+    set(FACESCAN_CAMERA_RUNTIME ${ORBBEC_SDK_RUNTIME})
     if(EXISTS "${HIKVISION_RUNTIME}")
-        list(APPEND FACESCAN_VENDOR_RUNTIME "${HIKVISION_RUNTIME}")
+        list(APPEND FACESCAN_CAMERA_RUNTIME "${HIKVISION_RUNTIME}")
     endif()
     if(EXISTS "${MINDVISION_RUNTIME}")
-        list(APPEND FACESCAN_VENDOR_RUNTIME "${MINDVISION_RUNTIME}")
+        list(APPEND FACESCAN_CAMERA_RUNTIME "${MINDVISION_RUNTIME}")
     endif()
-    if(FACESCAN_VENDOR_RUNTIME)
-        add_custom_command(TARGET facescan_backend POST_BUILD
+    if(FACESCAN_CAMERA_RUNTIME)
+        add_custom_command(TARGET FaceScanCamera POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${FACESCAN_VENDOR_RUNTIME} $<TARGET_FILE_DIR:facescan_backend>)
+                ${FACESCAN_CAMERA_RUNTIME} $<TARGET_FILE_DIR:FaceScanCamera>)
     endif()
 endif()
 
 if(BUILD_TESTING)
-    # 优先使用 vcpkg/系统提供的 GoogleTest；找不到时回退到 FetchContent 在线下载
+    # 优先使用 vcpkg/系统提供的 GoogleTest；找不到时回退到 FetchContent 在线下载。
     find_package(GTest CONFIG QUIET)
     if(NOT GTest_FOUND)
         include(FetchContent)
@@ -198,22 +257,15 @@ if(BUILD_TESTING)
     endif()
 
     target_link_libraries(facescan_tests PRIVATE
-        facescan_core
+        FaceScanReconstruction
+        FaceScanService
+        FaceScanCamera
+        facescan_common
+        FaceScanConfig
+        FaceScanDatabase
         GTest::gtest_main
     )
 
-    if(ORBBEC_SDK_RUNTIME)
-        add_custom_command(TARGET facescan_tests POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${ORBBEC_SDK_RUNTIME} $<TARGET_FILE_DIR:facescan_tests>)
-    endif()
-
     include(GoogleTest)
     gtest_discover_tests(facescan_tests)
-endif()
-
-if(ORBBEC_SDK_RUNTIME)
-    add_custom_command(TARGET facescan_backend POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${ORBBEC_SDK_RUNTIME} $<TARGET_FILE_DIR:facescan_backend>)
 endif()

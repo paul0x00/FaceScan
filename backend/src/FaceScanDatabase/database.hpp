@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../common/models.hpp"
+#include "../common/module_api.hpp"
 
 #include <sqlite3.h>
 
@@ -11,7 +12,7 @@
 namespace facescan {
 
 /// SQLite 数据访问层，负责患者、订单、扫描记录和数据目录索引同步。
-class Database {
+class FACESCAN_DATABASE_API Database {
 public:
     /// 打开或创建 SQLite 数据库，并完成建表、迁移和初始数据准备。
     explicit Database(const std::string& filePath);

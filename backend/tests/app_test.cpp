@@ -1,4 +1,4 @@
-#include "../src/api/app.hpp"
+#include "../src/FaceScanService/app.hpp"
 
 #include "../src/common/bmp_utils.hpp"
 #include "../src/common/file_utils.hpp"

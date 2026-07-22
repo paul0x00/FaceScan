@@ -1,4 +1,4 @@
-#include "../src/algorithm/point_cloud_editor.hpp"
+#include "../src/FaceScanReconstruction/point_cloud_editor.hpp"
 
 #include "../src/common/file_utils.hpp"
 #include "test_utils.hpp"

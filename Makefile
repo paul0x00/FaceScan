@@ -14,7 +14,7 @@ stop:
 backend:
 	cmake -S backend -B backend/build -G Ninja $(VCPKG_TOOLCHAIN)
 	cmake --build backend/build
-	./backend/build/facescan_backend 8080
+	./backend/build/FaceScanBackend 8080
 
 frontend:
 	npm --prefix frontend run dev -- --host 127.0.0.1

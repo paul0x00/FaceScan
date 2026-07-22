@@ -1,11 +1,13 @@
 #pragma once
 
+#include "../common/module_api.hpp"
+
 #include <string>
 
 namespace facescan {
 
 /// 后端运行配置，来自 app.json 或内置默认值。
-struct AppConfig {
+struct FACESCAN_CONFIG_API AppConfig {
     /// 构造默认配置。
     AppConfig();
 
@@ -36,8 +38,8 @@ struct AppConfig {
 };
 
 /// 从配置文件加载后端配置；缺失时返回默认配置。
-AppConfig loadAppConfig();
+FACESCAN_CONFIG_API AppConfig loadAppConfig();
 /// 将可编辑配置写回 app.json。
-bool saveAppConfig(const AppConfig& config);
+FACESCAN_CONFIG_API bool saveAppConfig(const AppConfig& config);
 
 } // namespace facescan

@@ -36,7 +36,7 @@
 - 海康威视：安装或下载 MVS 客户端/SDK 后复制上述头文件、导入库和运行库。
 - 迈德威视：安装或下载工业相机 SDK 后复制上述头文件、导入库和运行库。
 - 替换 SDK 后需要重新运行 CMake 配置，确认输出中出现对应的 SDK found 信息。
-- Windows 构建后会把检测到的厂商 DLL/XML 自动复制到 `facescan_backend.exe` 和 `facescan_tests.exe` 所在目录。
+- Windows 构建后会把检测到的厂商 DLL/XML 自动复制到 `FaceScanCamera.dll` 所在目录。
 
 请遵守各厂商 SDK 的许可证，不要把 SDK 二进制提交到仓库。
 

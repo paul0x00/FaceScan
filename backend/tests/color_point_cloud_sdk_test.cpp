@@ -1,4 +1,4 @@
-#include "../src/algorithm/color_point_cloud_sdk.hpp"
+#include "../src/FaceScanReconstruction/color_point_cloud_sdk.hpp"
 
 #include "../src/common/bmp_utils.hpp"
 #include "../src/common/file_utils.hpp"

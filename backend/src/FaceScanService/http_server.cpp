@@ -1,13 +1,10 @@
 #include "http_server.hpp"
 
-#include "../api/app.hpp"
-#include "../config/app_config.hpp"
-
+#include "app.hpp"
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 
-#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <thread>
@@ -44,11 +41,9 @@ void doSession(tcp::socket socket, std::shared_ptr<App> app)
 
 } // namespace
 
-int runBackend(int argc, char* argv[])
+int runBackend(const AppConfig& config, unsigned short port)
 {
     try {
-        const AppConfig config = loadAppConfig();
-        const unsigned short port = argc > 1 ? static_cast<unsigned short>(std::atoi(argv[1])) : config.backendPort;
         asio::io_context ioc(1);
         tcp::acceptor acceptor(ioc, tcp::endpoint(tcp::v4(), port));
         std::shared_ptr<App> app(new App(config));

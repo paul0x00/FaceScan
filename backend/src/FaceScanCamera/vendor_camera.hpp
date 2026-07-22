@@ -30,7 +30,7 @@ struct VendorTriggerShot {
 };
 
 /// 多设备软触发屏障：所有设备准备完成后由管理线程统一释放。
-class TriggerBarrier {
+class FACESCAN_CAMERA_API TriggerBarrier {
 public:
     TriggerBarrier();
 
@@ -51,7 +51,7 @@ private:
 };
 
 /// 单台真实相机的统一接口，屏蔽 Orbbec、海康和迈德威视 SDK 差异。
-class IVendorCamera {
+class FACESCAN_CAMERA_API IVendorCamera {
 public:
     virtual ~IVendorCamera();
 
@@ -69,7 +69,7 @@ public:
 };
 
 /// 厂商设备枚举和按序列号打开接口。
-class IVendorCameraBackend {
+class FACESCAN_CAMERA_API IVendorCameraBackend {
 public:
     virtual ~IVendorCameraBackend();
     virtual const char* vendor() const = 0;
@@ -78,6 +78,6 @@ public:
 };
 
 /// 创建当前构建可用的厂商后端。
-std::vector<std::shared_ptr<IVendorCameraBackend>> createVendorCameraBackends();
+FACESCAN_CAMERA_API std::vector<std::shared_ptr<IVendorCameraBackend>> createVendorCameraBackends();
 
 } // namespace facescan

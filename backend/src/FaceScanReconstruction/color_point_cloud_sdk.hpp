@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../common/module_api.hpp"
+
 #include <string>
 #include <vector>
 
@@ -60,7 +62,7 @@ struct PointCloudBuildResult {
 };
 
 /// MVP 彩色点云重建器，将多视角图像转换为 PLY 点云。
-class ColorPointCloudSdk {
+class FACESCAN_RECONSTRUCTION_API ColorPointCloudSdk {
 public:
     /// 指定点云输出目录。
     explicit ColorPointCloudSdk(const std::string& outputRoot);

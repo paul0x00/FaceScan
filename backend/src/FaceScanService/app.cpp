@@ -1,13 +1,13 @@
 #include "app.hpp"
 
-#include "../algorithm/color_point_cloud_sdk.hpp"
-#include "../algorithm/point_cloud_editor.hpp"
-#include "../camera/camera_manager.hpp"
-#include "../common/file_utils.hpp"
-#include "../common/json_utils.hpp"
-#include "../common/models.hpp"
-#include "../common/time_utils.hpp"
-#include "database/database.hpp"
+#include "FaceScanReconstruction/color_point_cloud_sdk.hpp"
+#include "FaceScanReconstruction/point_cloud_editor.hpp"
+#include "FaceScanCamera/camera_manager.hpp"
+#include "common/file_utils.hpp"
+#include "common/json_utils.hpp"
+#include "common/models.hpp"
+#include "common/time_utils.hpp"
+#include "FaceScanDatabase/database.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
@@ -947,6 +947,81 @@ std::string contentTypeForImagePath(const std::string& path)
     return "application/octet-stream";
 }
 
+/// 根据前端静态文件扩展名推断 HTTP Content-Type。
+std::string contentTypeForWebPath(const std::string& path)
+{
+    const std::string ext = extensionLower(path);
+    if (ext == "html") return "text/html; charset=utf-8";
+    if (ext == "css") return "text/css; charset=utf-8";
+    if (ext == "js" || ext == "mjs") return "application/javascript; charset=utf-8";
+    if (ext == "json" || ext == "map") return "application/json; charset=utf-8";
+    if (ext == "svg") return "image/svg+xml; charset=utf-8";
+    if (ext == "png") return "image/png";
+    if (ext == "jpg" || ext == "jpeg") return "image/jpeg";
+    if (ext == "gif") return "image/gif";
+    if (ext == "webp") return "image/webp";
+    if (ext == "ico") return "image/x-icon";
+    if (ext == "woff") return "font/woff";
+    if (ext == "woff2") return "font/woff2";
+    if (ext == "ttf") return "font/ttf";
+    if (ext == "wasm") return "application/wasm";
+    return "application/octet-stream";
+}
+
+/// 解码 URL 路径中的百分号编码；格式非法时返回空字符串。
+std::string decodeUrlPath(const std::string& value)
+{
+    std::string out;
+    out.reserve(value.size());
+    for (std::size_t i = 0; i < value.size(); ++i) {
+        if (value[i] != '%') {
+            out.push_back(value[i]);
+            continue;
+        }
+        if (i + 2 >= value.size()) {
+            return "";
+        }
+        const char high = value[i + 1];
+        const char low = value[i + 2];
+        const int highValue = high >= '0' && high <= '9' ? high - '0'
+            : high >= 'a' && high <= 'f' ? high - 'a' + 10
+            : high >= 'A' && high <= 'F' ? high - 'A' + 10 : -1;
+        const int lowValue = low >= '0' && low <= '9' ? low - '0'
+            : low >= 'a' && low <= 'f' ? low - 'a' + 10
+            : low >= 'A' && low <= 'F' ? low - 'A' + 10 : -1;
+        if (highValue < 0 || lowValue < 0) {
+            return "";
+        }
+        out.push_back(static_cast<char>((highValue << 4) | lowValue));
+        i += 2;
+    }
+    return out;
+}
+
+/// 判断静态资源相对路径是否安全，阻止访问 web 根目录之外的文件。
+bool isSafeWebPath(const std::string& path)
+{
+    return !path.empty() && path[0] != '/' && path.find('\\') == std::string::npos &&
+        path.find('\0') == std::string::npos && !hasParentTraversal(path);
+}
+
+/// 从候选目录中找到包含 index.html 的前端生产构建目录。
+std::string findWebRoot(const std::string& backendRoot)
+{
+    const std::string candidates[] = {
+        joinPath(backendRoot, "web"),
+        "web",
+        joinPath(backendRoot, "frontend/dist"),
+        "frontend/dist"
+    };
+    for (std::size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); ++i) {
+        if (pathExists(joinPath(candidates[i], "index.html"))) {
+            return candidates[i];
+        }
+    }
+    return "";
+}
+
 /// 从 ASCII PLY 点云生成轻量 SVG 预览图。
 std::string buildPointCloudPreviewSvg(const std::string& plyPath, const std::string& previewPath)
 {
@@ -1103,7 +1178,8 @@ public:
           camera_(config.imageRoot, config.cameraMode, makeMultiCameraConfig(config)),
           imageRoot_(CameraManager::normalizeRoot(config.imageRoot)),
           config_(config),
-          backendRoot_(backendRootFromConfigPath(config.configPath))
+          backendRoot_(backendRootFromConfigPath(config.configPath)),
+          webRoot_(findWebRoot(backendRoot_))
     {
         config_.imageRoot = imageRoot_;
     }
@@ -1271,7 +1347,10 @@ public:
             if (req.method() == http::verb::post && path == "/api/export/upload") {
                 return jsonResponse(req, "{\"ok\":true,\"message\":\"云端上传接口已预留，第一阶段不启用真实云同步\"}");
             }
-            return jsonResponse(req, "{\"error\":\"not found\"}", http::status::not_found);
+            if (path == "/api" || path.find("/api/") == 0) {
+                return jsonResponse(req, "{\"error\":\"not found\"}", http::status::not_found);
+            }
+            return frontendFile(req, path);
         } catch (const std::exception& e) {
             return jsonResponse(req, "{\"error\":\"" + escapeJson(e.what()) + "\"}", http::status::internal_server_error);
         }
@@ -1290,6 +1369,8 @@ private:
     AppConfig config_;
     /// backend 工程根目录，用于解析相对路径。
     std::string backendRoot_;
+    /// Vue 生产构建目录；发布版通常为程序工作目录下的 web。
+    std::string webRoot_;
 
     /// 构造通用文本响应，并统一设置 CORS 和 keep-alive。
     http::response<http::string_body> textResponse(
@@ -1715,6 +1796,44 @@ private:
             }
         }
         return binaryFileResponse(req, bytes, contentTypeForImagePath(path));
+    }
+
+    /// 返回 Vue 静态文件；前端 history 路由回退到 index.html。
+    http::response<http::string_body> frontendFile(
+        const http::request<http::string_body>& req,
+        const std::string& requestPath)
+    {
+        if (req.method() != http::verb::get && req.method() != http::verb::head) {
+            return jsonResponse(req, "{\"error\":\"not found\"}", http::status::not_found);
+        }
+        if (webRoot_.empty()) {
+            return textResponse(
+                req,
+                http::status::service_unavailable,
+                "FaceScan frontend is not installed. Run the production build or packaging script.");
+        }
+
+        const std::string decoded = decodeUrlPath(requestPath);
+        if (decoded.empty() && requestPath != "/") {
+            return jsonResponse(req, "{\"error\":\"invalid path\"}", http::status::bad_request);
+        }
+        std::string relativePath = decoded == "/" ? "index.html" : decoded.substr(1);
+        if (!isSafeWebPath(relativePath)) {
+            return jsonResponse(req, "{\"error\":\"invalid path\"}", http::status::bad_request);
+        }
+
+        std::string filePath = joinPath(webRoot_, relativePath);
+        if (!pathExists(filePath)) {
+            // Vue history 路由没有文件扩展名，刷新时需要返回入口页面；
+            // 缺失的 JS/CSS/图片则必须保持 404，避免把 index.html 当成资源返回。
+            if (relativePath.find('.') == std::string::npos) {
+                filePath = joinPath(webRoot_, "index.html");
+            } else {
+                return textResponse(req, http::status::not_found, "Frontend file not found");
+            }
+        }
+        const std::string body = readFileText(filePath);
+        return textResponse(req, http::status::ok, req.method() == http::verb::head ? "" : body, contentTypeForWebPath(filePath));
     }
 
     /// API：将订单图像和点云打包为 ZIP。

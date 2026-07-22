@@ -1,4 +1,4 @@
-#include "../src/database/database.hpp"
+#include "../src/FaceScanDatabase/database.hpp"
 
 #include "test_utils.hpp"
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../common/module_api.hpp"
+
 #include <memory>
 #include <stdint.h>
 #include <string>
@@ -127,7 +129,7 @@ struct CameraControlUpdate {
 };
 
 /// 相机设备抽象接口，屏蔽模拟设备、单台 Orbbec 和多厂商组合设备差异。
-class ICameraDevice {
+class FACESCAN_CAMERA_API ICameraDevice {
 public:
     /// 释放设备资源。
     virtual ~ICameraDevice();
@@ -175,7 +177,7 @@ struct MultiCameraConfig {
 };
 
 /// 相机服务门面，向 API 层提供稳定的预览和采集能力。
-class CameraManager {
+class FACESCAN_CAMERA_API CameraManager {
 public:
     /// 使用模拟相机创建管理器。
     explicit CameraManager(const std::string& imageRoot);
